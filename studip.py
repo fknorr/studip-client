@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import requests
 from html.parser import HTMLParser
 from enum import IntEnum
@@ -96,9 +94,15 @@ def write_database():
         sys.exit(1)
 
 
-def main():
-    configure()
-    read_database()
+def ellipsize(string, length):
+    if len(string) <= length:
+        return string
+    else:
+        return string[:left-2] + " .. " + string[left+2:]
+
+
+def update_metadata():
+    global sess
 
     sess = requests.session()
     sess.get(config["studip_base"] + "/studip/index.php?again=yes&sso=shib")
@@ -114,7 +118,6 @@ def main():
     if not "courses" in database:
         database["courses"] = parse_course_list(r.text)
 
-    i = 0
     for course in database["courses"]:
         course_url = config["studip_base"] + "/studip/seminar_main.php?auswahl=" + course["id"]
         folder_url = config["studip_base"] + "/studip/folder.php?cid=" + course["id"] + "&cmd=all"
@@ -129,16 +132,28 @@ def main():
         r = sess.get(folder_url)
         file_list = parse_file_list(r.text)
 
-        for file_id in file_list:
-            if file_id not in database["files"]:
-                open_url = folder_url + "&open=" + file_id
-                r = sess.get(open_url)
-                details = parse_file_details(r.text)
-                details["course"] = course["id"]
-                database["files"][file_id] = details
-                i += 1
-                if i > 2:
-                    break
+        new_files = [ file_id for file_id in file_list if file_id not in database["files"] ]
+        print("{} new files for {}".format(len(new_files) or "No", course["name"]))
+        for i, file_id in enumerate(new_files):
+            print("Fetching metadata for file {}/{}...".format(i+1, len(new_files)),
+                    end="", flush=True)
+            open_url = folder_url + "&open=" + file_id
+            r = sess.get(open_url)
+            details = parse_file_details(r.text)
+            details["course"] = course["id"]
+            database["files"][file_id] = details
+            print(" " + details["description"])
+
+
+def main():
+    configure()
+    read_database()
+
+    try:
+        update_metadata()
+    except KeyboardInterrupt:
+        write_database()
+        raise
 
     write_database()
 
