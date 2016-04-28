@@ -112,7 +112,7 @@ def ellipsize(string, length):
 
 
 def update_metadata():
-    global sess
+    global sess, database
 
     db_courses = database["courses"]
     db_files = database["files"]
@@ -195,19 +195,25 @@ def update_metadata():
             else:
                 print("<bad format>")
 
-        for file_id, details in db_files.items():
-            course = db_courses[details["course"]]
-            if course["sync"] == "yes":
-                directory = "/".join([course["name"]] + details["folder"])
-                dir_path = "/tmp/studip-client/" + directory
-                os.makedirs(dir_path, exist_ok=True)
-                rel_path = directory + "/" + details["name"]
-                abs_path = dir_path + "/" + details["name"]
-                if not os.path.isfile(abs_path):
-                    print("Downloading file {}...".format(rel_path))
-                    r = sess.get(details["url"])
-                    with open(abs_path, "wb") as file:
-                        file.write(r.content)
+
+def sync_files():
+    first_file = True
+    for file_id, details in database["files"].items():
+        course = database["courses"][details["course"]]
+        if course["sync"] == "yes":
+            directory = "/".join([course["name"]] + details["folder"])
+            dir_path = "/tmp/studip-client/" + directory
+            os.makedirs(dir_path, exist_ok=True)
+            rel_path = directory + "/" + details["name"]
+            abs_path = dir_path + "/" + details["name"]
+            if not os.path.isfile(abs_path):
+                if first_file:
+                    print()
+                    first_file = False
+                print("Downloading file {}...".format(rel_path))
+                r = sess.get(details["url"])
+                with open(abs_path, "wb") as file:
+                    file.write(r.content)
 
 
 def main():
@@ -219,8 +225,9 @@ def main():
     except KeyboardInterrupt:
         write_database()
         raise
-
     write_database()
+
+    sync_files()
 
 
 if __name__ == "__main__":
