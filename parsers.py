@@ -169,14 +169,17 @@ class FileDetailsParser(HTMLParser):
                     href = attrs["href"]
                     if "folder.php" in href:
                         self.state = State.in_folder_a
-                    elif "sendfile.php" in href:
+                    elif "sendfile.php" in href and not "zip=" in href:
                         self.file["url"] = href
+                        self.file["name"] = get_url_field(href, "file_name")
 
     def handle_endtag(self, tag):
         State = FileDetailsParser.State
         if tag == "div" and self.state in [ State.file_0_div, State.in_open_div ]:
             if self.div_depth > 0:
                 self.div_depth -= 1
+            else:
+                self.state = State.outside
         elif tag == "a" and self.state == State.in_folder_a:
             self.state = State.in_open_div
         elif tag == "span" and self.state == State.in_header_span:

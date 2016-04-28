@@ -76,16 +76,18 @@ def read_database():
     os.makedirs(cache_dir, exist_ok = True)
     db_file_name = cache_dir + "/db.json"
 
+    database = {
+        "files" : {},
+        "courses" : {}
+    }
+
     try:
         with open(cache_dir + "/db.json", "r") as file:
-            database = json.load(file)
+            database.update(json.load(file))
     except (KeyboardInterrupt, SystemExit):
         raise
     except:
-        database = {
-            "files" : {},
-            "courses" : {}
-        }
+        pass
 
 
 def write_database():
@@ -147,7 +149,7 @@ def update_metadata():
         course["sync"] = { "y" : "yes", "n" : "no", "m" : "metadata only" }[sync]
         db_courses[course_id] = course
 
-    sync_courses = (course for course in db_courses if db_courses[course]["sync"] == "yes")
+    sync_courses = (course for course in db_courses if db_courses[course]["sync"] != "no")
     last_course_synced = False
     for course_id in sync_courses:
         course = db_courses[course_id]
@@ -182,12 +184,30 @@ def update_metadata():
         for i, file_id in enumerate(new_files):
             print("Fetching metadata for file {}/{}...".format(i+1, len(new_files)),
                     end="", flush=True)
+
             open_url = folder_url + "&open=" + file_id
             r = sess.get(open_url)
             details = parse_file_details(r.text)
-            details["course"] = course_id
-            db_files[file_id] = details
-            print(" " + details["description"])
+            if all(attr in details for attr in ["name", "url", "folder"]):
+                details["course"] = course_id
+                db_files[file_id] = details
+                print(" " + details["description"])
+            else:
+                print("<bad format>")
+
+        for file_id, details in db_files.items():
+            course = db_courses[details["course"]]
+            if course["sync"] == "yes":
+                directory = "/".join([course["name"]] + details["folder"])
+                dir_path = "/tmp/studip-client/" + directory
+                os.makedirs(dir_path, exist_ok=True)
+                rel_path = directory + "/" + details["name"]
+                abs_path = dir_path + "/" + details["name"]
+                if not os.path.isfile(abs_path):
+                    print("Downloading file {}...".format(rel_path))
+                    r = sess.get(details["url"])
+                    with open(abs_path, "wb") as file:
+                        file.write(r.content)
 
 
 def main():
