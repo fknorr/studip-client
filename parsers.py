@@ -40,7 +40,7 @@ class CourseListParser(HTMLParser):
         super().__init__()
         State = CourseListParser.State
         self.state = State.before_sem
-        self.courses = []
+        self.courses = {}
 
     def handle_starttag(self, tag, attrs):
         State = CourseListParser.State
@@ -66,11 +66,10 @@ class CourseListParser(HTMLParser):
                 self.state = State.before_tr
         elif self.state == State.after_td:
             if tag == "tr":
-                self.courses.append({
+                self.courses[self.current_id] = {
                     "number" : ' '.join(self.current_number.split()),
-                    "id": self.current_id,
                     "name": ' '.join(self.current_name.split())
-                })
+                }
                 self.state = State.before_tr
 
     def handle_data(self, data):

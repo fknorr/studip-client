@@ -9,6 +9,13 @@ from getpass import getpass
 from parsers import *
 
 
+def prompt_choice(prompt, options):
+    choice = ""
+    while len(choice) < 1 or choice[0] not in options:
+        choice = input(prompt + ": ").lower()
+    return choice[0]
+
+
 def configure():
     global config, user_name, password
 
@@ -39,13 +46,10 @@ def configure():
     else:
         password = getpass()
 
-    if "save_login" in config:
-        save_login = config["save_login"]
+    if "save_login" in config and config["save_login"][0] in "ynu":
+        save_login = config["save_login"][0]
     else:
-        choice = ""
-        while len(choice) < 1 or choice[0] not in "ynu":
-            choice = input("Save login? ([y]es, [n]o, [u]ser name only): ").lower()
-        save_login = choice[0]
+        save_login = prompt_choice("Save login? ([y]es, [n]o, [u]ser name only)", "ynu")
         config["save_login"] = { "y" : "yes", "n" : "no", "u" : "user name only" }[save_login];
 
     if save_login in "yu":
@@ -77,7 +81,8 @@ def read_database():
         raise
     except:
         database = {
-            "files" : {}
+            "files" : {},
+            "courses" : {}
         }
 
 
@@ -98,11 +103,15 @@ def ellipsize(string, length):
     if len(string) <= length:
         return string
     else:
-        return string[:left-2] + " .. " + string[left+2:]
+        left = length // 2 - 2
+        return string[:left] + " .. " + string[len(string)-left:]
 
 
 def update_metadata():
     global sess
+
+    db_courses = database["courses"]
+    db_files = database["files"]
 
     sess = requests.session()
     sess.get(config["studip_base"] + "/studip/index.php?again=yes&sso=shib")
@@ -115,12 +124,34 @@ def update_metadata():
 
     form_data = parse_saml_form(r.text)
     r = sess.post(config["studip_base"] + "/Shibboleth.sso/SAML2/POST", form_data)
-    if not "courses" in database:
-        database["courses"] = parse_course_list(r.text)
+    remote_courses = parse_course_list(r.text)
 
-    for course in database["courses"]:
-        course_url = config["studip_base"] + "/studip/seminar_main.php?auswahl=" + course["id"]
-        folder_url = config["studip_base"] + "/studip/folder.php?cid=" + course["id"] + "&cmd=all"
+    new_courses = (course for course in remote_courses if course not in db_courses)
+    removed_courses = (course for course in db_courses if course not in remote_courses)
+
+    for course in removed_courses:
+        choice = prompt_choice("Delete data for removed course \"{}\"? ([y]es, [n]o)".format(
+                ellipsize(course["name"], 50)), "yn")
+        if choice == "y":
+            del db_courses[course]
+            for file_id, details in db_files:
+                if details["course"] == course:
+                    del db_files[file_id]
+
+    for course_id in new_courses:
+        course = remote_courses[course_id]
+        sync = prompt_choice("Synchronize \"{}\"? ([y]es, [n]o, [m]etadata only)".format(
+                ellipsize(course["name"], 50)), "ynm")
+        course["sync"] = { "y" : "yes", "n" : "no", "m" : "metadata only" }[sync]
+        db_courses[course_id] = course
+
+    sync_courses = (course for course in db_courses if db_courses[course]["sync"] == "yes")
+    last_course_synced = False
+    for course_id in sync_courses:
+        course = db_courses[course_id]
+
+        course_url = config["studip_base"] + "/studip/seminar_main.php?auswahl=" + course_id
+        folder_url = config["studip_base"] + "/studip/folder.php?cid=" + course_id + "&cmd=all"
 
         try:
             sess.get(course_url, timeout=(None, 0))
@@ -132,16 +163,28 @@ def update_metadata():
         r = sess.get(folder_url)
         file_list = parse_file_list(r.text)
 
-        new_files = [ file_id for file_id in file_list if file_id not in database["files"] ]
-        print("{} new files for {}".format(len(new_files) or "No", course["name"]))
+        if last_course_synced:
+            print()
+
+        new_files = [file_id for file_id in file_list if file_id not in db_files]
+        if len(new_files) > 0 :
+            if not last_course_synced:
+                print()
+            print(len(new_files), end="")
+            last_course_synced = True
+        else:
+            print("No", end="")
+            last_course_synced = False
+        print(" new files for " + course["name"])
+
         for i, file_id in enumerate(new_files):
             print("Fetching metadata for file {}/{}...".format(i+1, len(new_files)),
                     end="", flush=True)
             open_url = folder_url + "&open=" + file_id
             r = sess.get(open_url)
             details = parse_file_details(r.text)
-            details["course"] = course["id"]
-            database["files"][file_id] = details
+            details["course"] = course_id
+            db_files[file_id] = details
             print(" " + details["description"])
 
 
