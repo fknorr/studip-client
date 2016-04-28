@@ -37,6 +37,7 @@ State = IntEnum("State", "before_sem before_thead_end before_tr \
 
 class SeminarListParser(HTMLParser):
     state = State.before_sem
+    seminars = []
 
     def handle_starttag(self, tag, attrs):
         if self.state == State.before_sem:
@@ -62,12 +63,11 @@ class SeminarListParser(HTMLParser):
         elif self.state == State.after_td:
             if tag == "tr":
                 self.state = State.before_tr
-                seminar = {
+                self.seminars.append({
                     "id" : ' '.join(self.current_id.split()),
-                    "url": self.current_url,
+                    "url_overview": self.current_url,
                     "name": ' '.join(self.current_name.split())
-                }
-                print(seminar)
+                })
 
     def handle_data(self, data):
         if self.state == State.td_id:
@@ -75,6 +75,23 @@ class SeminarListParser(HTMLParser):
         elif self.state == State.td_name:
             self.current_name += data
 
-seminar = SeminarListParser()
-seminar.feed(r.text)
+sem_parser = SeminarListParser()
+sem_parser.feed(r.text)
+seminars = sem_parser.seminars
 
+class OverviewParser(HTMLParser):
+    folder_url = ""
+    def handle_starttag(self, tag, attrs):
+        if tag == "a":
+            attrs = dict(attrs)
+            if "href" in attrs and "folder.php" in attrs["href"]:
+                self.folder_url = attrs["href"]
+
+for sem in seminars:
+    r = sess.get(sem["url_overview"])
+    overview_parser = OverviewParser()
+    overview_parser.feed(r.text)
+    sem["url_files"] = overview_parser.folder_url
+
+for sem in seminars:
+    print(sem)
