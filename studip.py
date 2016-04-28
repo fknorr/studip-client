@@ -9,11 +9,12 @@ from getpass import getpass
 from parsers import *
 
 
-def prompt_choice(prompt, options):
-    choice = ""
-    while len(choice) < 1 or choice[0] not in options:
+def prompt_choice(prompt, options, default=None):
+    choice = None
+    while choice is None or (default is None and len(choice) < 1) \
+            or (len(choice) > 0 and choice[0] not in options):
         choice = input(prompt + ": ").lower()
-    return choice[0]
+    return choice[0] if len(choice) > 0 else default
 
 
 def configure():
@@ -49,7 +50,8 @@ def configure():
     if "save_login" in config and config["save_login"][0] in "ynu":
         save_login = config["save_login"][0]
     else:
-        save_login = prompt_choice("Save login? ([y]es, [n]o, [u]ser name only)", "ynu")
+        save_login = prompt_choice("Save login? ([Y]es, [n]o, [u]ser name only)", "ynu",
+                default="y")
         config["save_login"] = { "y" : "yes", "n" : "no", "u" : "user name only" }[save_login];
 
     if save_login in "yu":
@@ -130,8 +132,8 @@ def update_metadata():
     removed_courses = (course for course in db_courses if course not in remote_courses)
 
     for course in removed_courses:
-        choice = prompt_choice("Delete data for removed course \"{}\"? ([y]es, [n]o)".format(
-                ellipsize(course["name"], 50)), "yn")
+        choice = prompt_choice("Delete data for removed course \"{}\"? ([Y]es, [n]o)".format(
+                ellipsize(course["name"], 50)), "yn", default="y")
         if choice == "y":
             del db_courses[course]
             for file_id, details in db_files:
@@ -140,8 +142,8 @@ def update_metadata():
 
     for course_id in new_courses:
         course = remote_courses[course_id]
-        sync = prompt_choice("Synchronize \"{}\"? ([y]es, [n]o, [m]etadata only)".format(
-                ellipsize(course["name"], 50)), "ynm")
+        sync = prompt_choice("Synchronize \"{}\"? ([Y]es, [n]o, [m]etadata only)".format(
+                ellipsize(course["name"], 50)), "ynm", default="y")
         course["sync"] = { "y" : "yes", "n" : "no", "m" : "metadata only" }[sync]
         db_courses[course_id] = course
 
