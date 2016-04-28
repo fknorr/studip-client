@@ -16,6 +16,7 @@ data = {
 }
 r = sess.post(sso_base + "/idp/Authn/UserPassword", data=data)
 
+
 class SAMLFormParser(HTMLParser):
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
@@ -28,10 +29,12 @@ class SAMLFormParser(HTMLParser):
     def form_data(self):
         return { "RelayState" : self.relay_state, "SAMLResponse" : self.saml_response }
 
+
 saml = SAMLFormParser()
 saml.feed(r.text)
 
 r = sess.post(studip_base + "/Shibboleth.sso/SAML2/POST", saml.form_data())
+
 
 class SeminarListParser(HTMLParser):
     State = IntEnum("State", "before_sem before_thead_end before_tr \
@@ -51,7 +54,7 @@ class SeminarListParser(HTMLParser):
         elif self.state == State.before_tr and tag == "tr":
             self.state = State.tr
             self.current_url = self.current_id = self.current_name = ""
-            self.current_seminar = { "id": "", "name" : "" } 
+            self.current_seminar = { "id": "", "name" : "" }
         elif tag == "td" and self.state in [ State.tr, State.td_group, State.td_img, State.td_id,
                 State.td_name ]:
             self.state = State(int(self.state) + 1)
@@ -98,7 +101,7 @@ class OverviewParser(HTMLParser):
             attrs = dict(attrs)
             if "href" in attrs and "folder.php" in attrs["href"]:
                 self.folder_url = attrs["href"]
-                
+
 
 class FileListParser(HTMLParser):
     State = IntEnum("State", "outside file_0_div")
@@ -132,20 +135,20 @@ class FileListParser(HTMLParser):
         State = FileListParser.State
         if tag == "div" and self.state == State.file_0_div:
             if self.div_depth > 0:
-                self.div_depth -= 1    
+                self.div_depth -= 1
             else:
                 self.state = State.outside
 
 
 class FileDetailsParser(HTMLParser):
-    State = IntEnum("State", "outside file_0_div in_open_div in_folder_a")
+    State = IntEnum("State", "outside file_0_div in_header_span in_open_div in_folder_a")
 
     def __init__(self, file_id):
         super().__init__()
         State = FileDetailsParser.State
         self.state = State.outside
         self.div_depth = 0
-        self.file = { "file_id" : file_id, "folder" : [] }
+        self.file = { "file_id" : file_id }
 
     def handle_starttag(self, tag, attrs):
         State = FileDetailsParser.State
@@ -161,26 +164,33 @@ class FileDetailsParser(HTMLParser):
                 self.div_depth += 1
             elif tag == "span" and "id" in attrs and attrs["id"].endswith("_header") \
                     and "style" in attrs and "bold" in attrs["style"]:
-                self.state = State.in_open_div
+                self.state = State.in_header_span
         elif self.state == State.in_open_div:
             if tag == "a":
                 attrs = dict(attrs)
-                if "href" in attrs and "folder.php" in attrs["href"]:
-                    self.state = State.in_folder_a
+                if "href" in attrs:
+                    href = attrs["href"]
+                    if "folder.php" in href:
+                        self.state = State.in_folder_a
+                    elif "sendfile.php" in href:
+                        self.file["url"] = href
 
     def handle_endtag(self, tag):
         State = FileDetailsParser.State
         if tag == "div" and self.state in [ State.file_0_div, State.in_open_div ]:
             if self.div_depth > 0:
-                self.div_depth -= 1    
+                self.div_depth -= 1
         elif tag == "a" and self.state == State.in_folder_a:
+            self.state = State.in_open_div
+        elif tag == "span" and self.state == State.in_header_span:
             self.state = State.in_open_div
 
     def handle_data(self, data):
         State = FileDetailsParser.State
         if self.state == State.in_folder_a:
-            self.file["folder"].append(data)
-
+            self.file["folder"] = data.split(sep=" / ")
+        elif self.state == State.in_header_span:
+            self.file["description"] = data
 
 for sem in seminars:
     r = sess.get(sem["url_overview"])
@@ -201,4 +211,4 @@ for sem in seminars:
             details_parser = FileDetailsParser(file_id)
             details_parser.feed(r.text)
             print(details_parser.file)
-        
+
