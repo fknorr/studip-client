@@ -111,11 +111,8 @@ def ellipsize(string, length):
         return string[:left] + " .. " + string[len(string)-left:]
 
 
-def update_metadata():
-    global sess, database
-
-    db_courses = database["courses"]
-    db_files = database["files"]
+def open_session():
+    global sess, overview_page
 
     sess = requests.session()
     sess.get(config["studip_base"] + "/studip/index.php?again=yes&sso=shib")
@@ -128,7 +125,16 @@ def update_metadata():
 
     form_data = parse_saml_form(r.text)
     r = sess.post(config["studip_base"] + "/Shibboleth.sso/SAML2/POST", form_data)
-    remote_courses = parse_course_list(r.text)
+    overview_page = r.text
+
+
+def update_metadata():
+    global sess, database, overview_page
+
+    db_courses = database["courses"]
+    db_files = database["files"]
+
+    remote_courses = parse_course_list(overview_page)
 
     new_courses = (course for course in remote_courses if course not in db_courses)
     removed_courses = (course for course in db_courses if course not in remote_courses)
@@ -193,10 +199,21 @@ def update_metadata():
                 db_files[file_id] = details
                 print(" " + details["description"])
             else:
-                print("<bad format>")
+                print(" <bad format>")
 
 
-def sync_files():
+def update_database():
+    global database
+
+    try:
+        update_metadata()
+    except KeyboardInterrupt:
+        write_database()
+        raise
+    write_database()
+
+
+def download_files():
     first_file = True
     for file_id, details in database["files"].items():
         course = database["courses"][details["course"]]
@@ -216,18 +233,46 @@ def sync_files():
                     file.write(r.content)
 
 
+def show_usage(out):
+    out.write("""Usage: {} <operation> <parameters>
+
+Possible operations:
+    update      Update course database from Stud.IP
+    download    Download missing files from known database
+    sync        <update>, then <download>
+    help        Show this synopsis
+""".format(sys.argv[0]))
+
+
+def execute_command_line():
+    if len(sys.argv) < 2: return False
+
+    op = sys.argv[1]
+    if op == "update":
+        open_session()
+        update_database()
+    elif op == "download":
+        open_session()
+        download_files()
+    elif op == "sync":
+        open_session()
+        update_database()
+        download_files()
+    elif op == "help" or op == "--help" or op == "-h":
+        show_usage(sys.stdout)
+    else:
+        return False
+
+    return True
+
+
 def main():
     configure()
     read_database()
 
-    try:
-        update_metadata()
-    except KeyboardInterrupt:
-        write_database()
-        raise
-    write_database()
-
-    sync_files()
+    if not execute_command_line():
+        show_usage(sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
