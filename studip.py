@@ -18,7 +18,7 @@ def prompt_choice(prompt, options, default=None):
 
 
 def configure():
-    global config, user_name, password
+    global command_line, config, user_name, password
 
     config_dir = appdirs.user_config_dir("studip-client", "fknorr")
     os.makedirs(config_dir, exist_ok=True)
@@ -37,10 +37,21 @@ def configure():
     except:
         pass
 
+    if "sync_dir" in command_line and command_line["sync_dir"] is None:
+        if "sync_dir" in config:
+            command_line["sync_dir"] = config["sync_dir"]
+        else:
+            default_dir = os.path.expanduser("~/StudIP")
+            sync_dir = input("Sync directory [{}]: ".format(default_dir))
+            if not sync_dir:
+                sync_dir = default_dir
+            config["sync_dir"] = sync_dir
+            command_line["sync_dir"] = sync_dir
+
     if "user_name" in config:
         user_name = config["user_name"]
     else:
-        user_name = input("User name: ")
+        user_name = input("Stud.IP user name: ")
 
     if "password" in config:
         password = config["password"]
@@ -214,12 +225,14 @@ def update_database():
 
 
 def download_files():
+    global command_line, database
+
     first_file = True
     for file_id, details in database["files"].items():
         course = database["courses"][details["course"]]
         if course["sync"] == "yes":
             directory = "/".join([course["name"]] + details["folder"])
-            dir_path = "/tmp/studip-client/" + directory
+            dir_path = command_line["sync_dir"] + "/" + directory
             os.makedirs(dir_path, exist_ok=True)
             rel_path = directory + "/" + details["name"]
             abs_path = dir_path + "/" + details["name"]
@@ -244,35 +257,46 @@ Possible operations:
 """.format(sys.argv[0]))
 
 
-def execute_command_line():
+def parse_command_line():
     if len(sys.argv) < 2: return False
+
+    global command_line
+    command_line = {}
 
     op = sys.argv[1]
     if op == "update":
-        open_session()
-        update_database()
-    elif op == "download":
-        open_session()
-        download_files()
-    elif op == "sync":
-        open_session()
-        update_database()
-        download_files()
+        if len(sys.argv) != 2: return False
+    elif op == "download" or op == "sync":
+        if len(sys.argv) > 3: return False
+        command_line["sync_dir"] = sys.argv[2] if len(sys.argv) == 3 else None
     elif op == "help" or op == "--help" or op == "-h":
-        show_usage(sys.stdout)
+        op = "help"
     else:
         return False
 
+    command_line["operation"] = op
     return True
 
 
 def main():
-    configure()
-    read_database()
+    global command_line
 
-    if not execute_command_line():
+    if not parse_command_line():
         show_usage(sys.stderr)
         sys.exit(1)
+
+    configure()
+    read_database()
+    open_session()
+
+    op = command_line["operation"]
+    if op == "update":
+        update_metadata()
+    elif op == "download":
+        download_files()
+    elif op == "sync":
+        update_metadata()
+        download_files()
 
 
 if __name__ == "__main__":
