@@ -25,7 +25,7 @@ class Database(dict):
         except (KeyboardInterrupt, SystemExit):
             raise
         except:
-            raise
+            pass
 
 
     def write(self, file_name):
