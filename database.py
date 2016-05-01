@@ -66,7 +66,7 @@ class Database(dict):
                 session.get(course_url, timeout=(None, 0))
             except (KeyboardInterrupt, SystemExit):
                 raise
-            except:
+            except requests.Timeout:
                 pass
 
             r = session.get(folder_url)
