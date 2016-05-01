@@ -19,24 +19,13 @@ class Database(dict):
         self.config = config
 
     def read(self, file_name):
-        try:
-            with open(file_name, "r") as file:
-                self.update(json.load(file))
-        except (KeyboardInterrupt, SystemExit):
-            raise
-        except:
-            pass
+        with open(file_name, "r") as file:
+            self.update(json.load(file))
 
 
     def write(self, file_name):
-        try:
-            with open(file_name, "w") as file:
-                json.dump(self, file, indent=4)
-        except (KeyboardInterrupt, SystemExit):
-            raise
-        except:
-            sys.stderr.write("Unable to write to {}\n".format(file_name))
-            sys.exit(1)
+        with open(file_name, "w") as file:
+            json.dump(self, file, indent=4)
 
 
     def fetch(self, session, overview_page):

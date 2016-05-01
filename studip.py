@@ -5,6 +5,7 @@ import urllib.parse as urlparse
 import json, appdirs, os, sys
 from pathlib import Path
 from getpass import getpass
+from errno import ENOENT
 
 from parsers import *
 from database import Database
@@ -99,18 +100,32 @@ def read_database():
     db_file_name = cache_dir + "/db.json"
 
     database = Database(config)
-    database.read(db_file_name)
+
+    try:
+        database.read(db_file_name)
+    except IOError as e:
+        if e.errno != ENOENT:
+            sys.stderr.write("Error: Unable to read from {}: {}\n".format(db_file_name, e.strerror))
+            sys.exit(1)
 
 
 def update_database():
     global database, session, overview_page, db_file_name
 
+    interrupt = None
     try:
         database.fetch(session, overview_page)
-    except KeyboardInterrupt:
+    except KeyboardInterrupt as e:
+        interrupt = e
+
+    try:
         database.write(db_file_name)
-        raise
-    database.write(db_file_name)
+    except IOError as e:
+        sys.stderr.write("Error: Unable to write to {}: {}\n".format(db_file_name, e.strerror))
+        sys.exit(1)
+
+    if interrupt:
+        raise interrupt
 
 
 def download_files():
