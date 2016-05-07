@@ -89,15 +89,13 @@ def read_database():
 
     cache_dir = appdirs.user_cache_dir("studip-client", "fknorr")
     os.makedirs(cache_dir, exist_ok = True)
-    db_file_name = cache_dir + "/db.json"
-
-    database = Database(config)
+    db_file_name = cache_dir + "/db.sqlite"
 
     try:
-        database.read(db_file_name)
+        database = Database(config, db_file_name)
     except IOError as e:
         if e.errno != ENOENT:
-            sys.stderr.write("Error: Unable to read from {}: {}\n".format(db_file_name, e.strerror))
+            sys.stderr.write("Error: Unable to open file {}: {}\n".format(db_file_name, e.strerror))
             sys.exit(1)
 
 
@@ -109,12 +107,6 @@ def update_database():
         session.update_metadata()
     except KeyboardInterrupt as e:
         interrupt = e
-
-    try:
-        database.write(db_file_name)
-    except IOError as e:
-        sys.stderr.write("Error: Unable to write to {}: {}\n".format(db_file_name, e.strerror))
-        sys.exit(1)
 
     if interrupt:
         raise interrupt
