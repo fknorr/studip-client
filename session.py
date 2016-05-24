@@ -6,6 +6,7 @@ import database
 from database import Database
 from util import prompt_choice, ellipsize
 from datetime import date
+from urllib.parse import urlencode
 
 
 class Session:
@@ -87,11 +88,12 @@ class Session:
 
                 open_url = folder_url + "&open=" + file_id
                 r = self.http.get(open_url)
-                details = parse_file_details(r.text)
-                if all(attr in details for attr in ["name", "url", "folder"]):
-                    file = database.File(id=file_id, name=details["name"], created=date.today())
+                file = parse_file_details(r.text)
+                file.course = course.id
+
+                if file.complete():
                     self.db.add_file(file)
-                    print(" " + details["description"])
+                    print(" " + file.description)
                 else:
                     print(" <bad format>")
 
@@ -100,15 +102,17 @@ class Session:
         first_file = True
         for file in self.db.list_files(full=True, select_sync_metadata_only=False,
                 select_sync_no=False):
-            dir_path = self.sync_dir + "/" + file["path"]
+            dir_path = self.sync_dir + "/" + file.path
             os.makedirs(dir_path, exist_ok=True)
-            rel_path = file["path"] + "/" + file["name"]
-            abs_path = dir_path + "/" + file["name"]
+            rel_path = file.path + "/" + file.name
+            abs_path = dir_path + "/" + file.name
             if not os.path.isfile(abs_path):
                 if first_file:
                     print()
                     first_file = False
                 print("Downloading file {}...".format(rel_path))
-                r = self.http.get(file["url"])
+                url = config["studip_base"] + "/studip/sendfile.php?force_download=1&type=0&" \
+                        + urlencode({"file_id": file.id, "file_name": file.name })
+                r = self.http.get(url)
                 with open(abs_path, "wb") as file:
                     file.write(r.content)

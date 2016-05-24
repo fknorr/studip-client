@@ -111,6 +111,8 @@ def update_database():
     except KeyboardInterrupt as e:
         interrupt = e
 
+    database.commit()
+
     if interrupt:
         raise interrupt
 

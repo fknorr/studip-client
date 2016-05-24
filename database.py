@@ -12,6 +12,9 @@ class Course:
         self.name = name
         self.sync = sync
 
+    def complete(self):
+        return self.id and self.number and self.name and self.sync
+
 
 class File:
     def __init__(self, id, course=None, path=None, name=None, created=None):
@@ -19,7 +22,11 @@ class File:
         self.course = course
         self.path = path
         self.name = name
-        self.create = created
+        self.created = created
+
+    def complete(self):
+        return self.id and self.course and self.path and self.name and self.created
+
 
 class Folder:
     def __init__(self, id, name=None, parent=None, course=None):
@@ -27,6 +34,9 @@ class Folder:
         self.name = name
         self.parent = parent
         self.course = course
+
+    def complete(self):
+        return self.id and self.name and (self.parent or self.course)
 
 
 class QueryError(Exception):
@@ -164,8 +174,8 @@ class Database:
     def add_file(self, file):
         rows = self.query("""
                 SELECT id FROM folders
-                WHERE course = ? AND name = ?
-            """, (file.course, file.path[0]))
+                WHERE course = :course AND name = :name
+            """, course=file.course, name=file.path[0])
         if not rows:
             self.query("""
                     INSERT INTO folders (name, course)

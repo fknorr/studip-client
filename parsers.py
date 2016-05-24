@@ -3,7 +3,7 @@ from html.parser import HTMLParser
 from enum import IntEnum
 import urllib.parse as urlparse
 from datetime import datetime
-from database import Course, SyncMode
+from database import Course, SyncMode, File
 
 
 def get_url_field(url, field):
@@ -156,7 +156,7 @@ class FileDetailsParser(HTMLParser):
         State = FileDetailsParser.State
         self.state = State.outside
         self.div_depth = 0
-        self.file = {}
+        self.file = File(None)
         self.current_date = ""
 
     def handle_starttag(self, tag, attrs):
@@ -182,8 +182,8 @@ class FileDetailsParser(HTMLParser):
                     if "folder.php" in href:
                         self.state = State.in_folder_a
                     elif "sendfile.php" in href and not "zip=" in href:
-                        self.file["url"] = href
-                        self.file["name"] = get_url_field(href, "file_name")
+                        self.file.id = get_url_field(href, "file_id")
+                        self.file.name = get_url_field(href, "file_name")
         elif self.state == State.after_header_span and tag == "td":
             self.state = State.in_origin_td
         elif self.state == State.in_origin_td and tag == "a":
@@ -206,21 +206,20 @@ class FileDetailsParser(HTMLParser):
             self.state = State.in_open_div
             date_str = " ".join(self.current_date.split())
             try:
-                date = datetime.strptime(date_str, "%d.%m.%Y - %H:%M")
+                self.file.created = datetime.strptime(date_str, "%d.%m.%Y - %H:%M")
             except ValueError:
-                date = None
-            self.file["date"] = datetime.strftime(date, "%Y-%m-%d %H:%M")
+                pass
 
     def handle_data(self, data):
         State = FileDetailsParser.State
         if self.state == State.in_folder_a:
-            self.file["folder"] = data.split(sep=" / ")
+            self.file.path = data.split(sep=" / ")
         elif self.state == State.in_header_span:
-            self.file["description"] = data
+            self.file.description = data
         elif self.state == State.in_origin_td:
             self.current_date += data
         elif self.state == State.in_author_a:
-            self.file["author"] = data
+            self.file.author = data
 
 def parse_file_details(html):
     return create_parser_and_feed(FileDetailsParser, html).file
