@@ -2,6 +2,7 @@ import requests
 from html.parser import HTMLParser
 from enum import IntEnum
 import urllib.parse as urlparse
+from datetime import datetime
 
 
 def get_url_field(url, field):
@@ -138,7 +139,8 @@ def parse_file_list(html):
 
 
 class FileDetailsParser(HTMLParser):
-    State = IntEnum("State", "outside file_0_div in_header_span in_open_div in_folder_a")
+    State = IntEnum("State", "outside file_0_div in_header_span in_open_div in_folder_a "
+            "after_header_span in_origin_td in_author_a")
 
     def __init__(self):
         super().__init__()
@@ -146,6 +148,7 @@ class FileDetailsParser(HTMLParser):
         self.state = State.outside
         self.div_depth = 0
         self.file = {}
+        self.current_date = ""
 
     def handle_starttag(self, tag, attrs):
         State = FileDetailsParser.State
@@ -172,6 +175,10 @@ class FileDetailsParser(HTMLParser):
                     elif "sendfile.php" in href and not "zip=" in href:
                         self.file["url"] = href
                         self.file["name"] = get_url_field(href, "file_name")
+        elif self.state == State.after_header_span and tag == "td":
+            self.state = State.in_origin_td
+        elif self.state == State.in_origin_td and tag == "a":
+            self.state = State.in_author_a
 
     def handle_endtag(self, tag):
         State = FileDetailsParser.State
@@ -183,7 +190,17 @@ class FileDetailsParser(HTMLParser):
         elif tag == "a" and self.state == State.in_folder_a:
             self.state = State.in_open_div
         elif tag == "span" and self.state == State.in_header_span:
+            self.state = State.after_header_span
+        elif tag == "a" and self.state == State.in_author_a:
+            self.state = State.in_origin_td
+        elif tag == "td" and self.state == State.in_origin_td:
             self.state = State.in_open_div
+            date_str = " ".join(self.current_date.split())
+            try:
+                date = datetime.strptime(date_str, "%d.%m.%Y - %H:%M")
+            except ValueError:
+                date = None
+            self.file["date"] = datetime.strftime(date, "%Y-%m-%d %H:%M")
 
     def handle_data(self, data):
         State = FileDetailsParser.State
@@ -191,6 +208,10 @@ class FileDetailsParser(HTMLParser):
             self.file["folder"] = data.split(sep=" / ")
         elif self.state == State.in_header_span:
             self.file["description"] = data
+        elif self.state == State.in_origin_td:
+            self.current_date += data
+        elif self.state == State.in_author_a:
+            self.file["author"] = data
 
 def parse_file_details(html):
     return create_parser_and_feed(FileDetailsParser, html).file
