@@ -2,8 +2,10 @@ import requests
 import os
 
 from parsers import *
+import database
 from database import Database
 from util import prompt_choice, ellipsize
+from datetime import date
 
 
 class Session:
@@ -40,12 +42,12 @@ class Session:
             if choice == "y":
                 self.db.delete_course(course)
 
-        for course_id in new_courses:
-            course = remote_courses[course_id]
+        for course in new_courses:
             sync = prompt_choice("Synchronize \"{}\"? ([Y]es, [n]o, [m]etadata only)".format(
-                    ellipsize(course["name"], 50)), "ynm", default="y")
-            course["sync"] = { "y" : "yes", "n" : "no", "m" : "metadata only" }[sync]
-            self.db.add_course(course_id, course)
+                    ellipsize(course.name, 50)), "ynm", default="y")
+            M = database.SyncMode
+            course.sync = { "y" : M.Full, "n" : M.NoSync, "m" : M.Metadata }[sync]
+            self.db.add_course(course)
 
         sync_courses = self.db.list_courses(full=True, select_sync_no=False)
         last_course_synced = False
@@ -87,7 +89,7 @@ class Session:
                 r = self.http.get(open_url)
                 details = parse_file_details(r.text)
                 if all(attr in details for attr in ["name", "url", "folder"]):
-                    file = database.File(file_id, details["name"], date.today())
+                    file = database.File(id=file_id, name=details["name"], created=date.today())
                     self.db.add_file(file)
                     print(" " + details["description"])
                 else:
@@ -96,7 +98,8 @@ class Session:
 
     def download_files(self):
         first_file = True
-        for file in self.db.list_files(full=True, sync_courses_only=True):
+        for file in self.db.list_files(full=True, select_sync_metadata_only=False,
+                select_sync_no=False):
             dir_path = self.sync_dir + "/" + file["path"]
             os.makedirs(dir_path, exist_ok=True)
             rel_path = file["path"] + "/" + file["name"]

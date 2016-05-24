@@ -4,9 +4,29 @@ from collections import namedtuple
 
 
 SyncMode = IntEnum("SyncMode", "NoSync Metadata Full")
-Course = namedtuple("Course", [ "id", "number", "name", "sync" ])
-File = namedtuple("File", [ "id", "course", "path", "name", "created" ])
-Folder = namedtuple("Folder", [ "id", "name", "parent", "course" ])
+
+class Course:
+    def __init__(self, id, number=None, name=None, sync=None):
+        self.id = id
+        self.number = number
+        self.name = name
+        self.sync = sync
+
+
+class File:
+    def __init__(self, id, course=None, path=None, name=None, created=None):
+        self.id = id
+        self.course = course
+        self.path = path
+        self.name = name
+        self.create = created
+
+class Folder:
+    def __init__(self, id, name=None, parent=None, course=None):
+        self.id = id
+        self.name = name
+        self.parent = parent
+        self.course = course
 
 
 class QueryError(Exception):
@@ -95,7 +115,7 @@ class Database:
             """.format("*" if full else "id", ", ".join(sync_modes)))
 
         if full:
-            return [ Course(id, number, name, Mode(sync)) for id, number, name, sync in rows ]
+            return [ Course(id, number, name, SyncMode(sync)) for id, number, name, sync in rows ]
         else:
             return [ id for (id,) in rows ]
 

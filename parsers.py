@@ -3,6 +3,7 @@ from html.parser import HTMLParser
 from enum import IntEnum
 import urllib.parse as urlparse
 from datetime import datetime
+from database import Course, SyncMode
 
 
 def get_url_field(url, field):
@@ -43,14 +44,14 @@ def parse_saml_form(html):
 
 
 class CourseListParser(HTMLParser):
-    State = IntEnum("State", "before_sem before_thead_end before_tr \
-        tr td_group td_img td_id td_name after_td after_sem")
+    State = IntEnum("State", "before_sem before_thead_end before_tr "
+        "tr td_group td_img td_id td_name after_td after_sem")
 
     def __init__(self):
         super().__init__()
         State = CourseListParser.State
         self.state = State.before_sem
-        self.courses = {}
+        self.courses = []
 
     def handle_starttag(self, tag, attrs):
         State = CourseListParser.State
@@ -76,10 +77,9 @@ class CourseListParser(HTMLParser):
                 self.state = State.before_tr
         elif self.state == State.after_td:
             if tag == "tr":
-                self.courses[self.current_id] = {
-                    "number" : ' '.join(self.current_number.split()),
-                    "name": ' '.join(self.current_name.split())
-                }
+                self.courses.append(Course(id=self.current_id,
+                        number=' '.join(self.current_number.split()),
+                        name=' '.join(self.current_name.split()), sync=SyncMode.NoSync))
                 self.state = State.before_tr
 
     def handle_data(self, data):

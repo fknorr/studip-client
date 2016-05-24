@@ -33,18 +33,21 @@ def configure():
     except:
         pass
 
-    if "sync_dir" in command_line and command_line["sync_dir"] is None:
-        if "sync_dir" in config:
-            sync_dir = command_line["sync_dir"] = config["sync_dir"]
+    if "sync_dir" in command_line:
+        if command_line["sync_dir"] is None:
+            if "sync_dir" in config:
+                sync_dir = command_line["sync_dir"] = config["sync_dir"]
+            else:
+                default_dir = os.path.expanduser("~/StudIP")
+                sync_dir = input("Sync directory [{}]: ".format(default_dir))
+                if not sync_dir:
+                    sync_dir = default_dir
+                config["sync_dir"] = sync_dir
+                command_line["sync_dir"] = sync_dir
         else:
-            default_dir = os.path.expanduser("~/StudIP")
-            sync_dir = input("Sync directory [{}]: ".format(default_dir))
-            if not sync_dir:
-                sync_dir = default_dir
-            config["sync_dir"] = sync_dir
-            command_line["sync_dir"] = sync_dir
+            sync_dir = command_line["sync_dir"]
     else:
-        sync_dir = command_line["sync_dir"]
+        sync_dir = None
 
     if "user_name" in config:
         user_name = config["user_name"]
@@ -79,12 +82,12 @@ def configure():
 
 
 def open_session():
-    global config, session, database, user_name, password
+    global config, session, database, user_name, password, sync_dir
 
     session = Session(config, database, user_name, password, sync_dir)
 
 
-def read_database():
+def open_database():
     global database, db_file_name, config
 
     cache_dir = appdirs.user_cache_dir("studip-client", "fknorr")
@@ -92,7 +95,7 @@ def read_database():
     db_file_name = cache_dir + "/db.sqlite"
 
     try:
-        database = Database(config, db_file_name)
+        database = Database(db_file_name)
     except IOError as e:
         if e.errno != ENOENT:
             sys.stderr.write("Error: Unable to open file {}: {}\n".format(db_file_name, e.strerror))
@@ -157,7 +160,7 @@ def main():
         sys.exit(1)
 
     configure()
-    read_database()
+    open_database()
     open_session()
 
     op = command_line["operation"]
