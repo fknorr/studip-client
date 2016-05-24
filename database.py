@@ -9,13 +9,15 @@ File = namedtuple("File", [ "id", "course", "path", "name", "created" ])
 Folder = namedtuple("Folder", [ "id", "name", "parent", "course" ])
 
 
-class Database:
+class QueryError(Exception):
+    pass
 
-    def __init__(self, config, file_name):
-        self.config = config
+
+class Database:
+    def __init__(self, file_name):
         self.conn = sqlite3.connect(file_name, detect_types=sqlite3.PARSE_DECLTYPES)
 
-        self.conn.cursor().executescript("""
+        self.query_script("""
                 CREATE TABLE IF NOT EXISTS courses (
                     id CHAR(32) NOT NULL,
                     number VARCHAR(8) DEFAULT "",
@@ -55,7 +57,30 @@ class Database:
                         SELECT * FROM parent_dir ORDER BY level DESC
                     ) GROUP BY (file);
             """.format(len(SyncMode)+1))
-        self.conn.commit()
+
+
+    def query(self, sql, expected_rows=-1, *args, **kwargs):
+        cursor = self.conn.cursor()
+        if args:
+            if not kwargs:
+                cursor.execute(sql, (*args))
+            else:
+                raise ValueError("Pass either positional or keyword arguments")
+        elif kwargs:
+            cursor.execute(sql, dict(**kwargs))
+        else:
+            cursor.execute(sql)
+
+        if expected_rows != 0:
+            rows = cursor.fetchmany(expected_rows)
+            if len(rows) < expected_rows:
+                raise QueryError("Expected at least {} rows, got {}".format(
+                        expected_rows, len(rows)))
+            return rows
+
+
+    def query_script(self, sql):
+        self.conn.cursor().executescript(sql)
 
 
     def list_courses(self, full=False, select_sync_yes=True, select_sync_metadata_only=True,
@@ -64,7 +89,7 @@ class Database:
                 (select_sync_metadata_only, SyncMode.Metadata), (select_sync_no, SyncMode.NoSync) ]
                 if enable ]
 
-        rows = self.conn.cursor().execute("""
+        rows = self.query("""
                 SELECT {} FROM courses
                 WHERE sync IN ({});
             """.format("*" if full else "id", ", ".join(sync_modes)))
@@ -76,27 +101,28 @@ class Database:
 
 
     def get_course_details(self, course_id):
-        rows = self.conn.cursor().execute("""
+        rows = self.query("""
                 SELECT number, name, sync
                 FROM courses
-                WHERE courses.id = ?;
-            """, course_id)
+                WHERE courses.id = :id;
+            """, id=course_id, expected_rows=1)
         number, name, sync = rows[0]
         return Course(id=course_id, number=number, name=name, sync=SyncMode(sync))
 
 
     def add_course(self, course):
-        self.conn.cursor().execute("""
+        self.query("""
                 INSERT INTO courses
-                VALUES (?, ?, ?, ?);
-            """, (course.id, course.number, course.name, int(course.sync)))
+                VALUES (:id, :num, :name, :sync);
+            """, id=course.id, num=course.number, name=course.name, sync=int(course.sync),
+                expected_rows=0)
 
 
     def delete_course(self, course):
-        self.conn.cursor().execute("""
+        self.query("""
                 DELETE FROM courses
-                WHERE id = ?;
-            """, course.id)
+                WHERE id = :id;
+            """, id=course.id, expected_rows=0)
 
 
     def list_files(self, full=False, select_sync_yes=True, select_sync_metadata_only=True,
@@ -106,7 +132,7 @@ class Database:
                 (select_sync_metadata_only, SyncMode.Metadata), (select_sync_no, SyncMode.NoSync) ]
                 if enable ]
 
-        rows = self.conn.cursor().execute("""
+        rows = self.query("""
                 SELECT files.id FROM files
                 INNER JOIN folders ON files.folder = folders.id
                 INNER JOIN courses ON folders.course = courses.id
@@ -116,37 +142,37 @@ class Database:
 
 
     def add_file(self, file):
-        rows = self.conn.cursor().execute("""
+        rows = self.query("""
                 SELECT id FROM folders
                 WHERE course = ? AND name = ?
             """, (file.course, file.path[0]))
         if not rows:
-            self.conn.cursor().execute("""
+            self.query("""
                     INSERT INTO folders (name, course)
-                    VALUES (?, ?)
-                """, (file.path[0], file.course))
-            rows = self.conn.cursor().execute("""
+                    VALUES (:name, :course)
+                """, name=file.path[0], course=file.course, expected_rows=0)
+            rows = self.query("""
                     SELECT id FROM folders
-                    WHERE course = ? AND name = ?
-                """, (file.course, file.path[0]))
+                    WHERE course = :course AND name = :name
+                """, course=file.course, name=file.path[0])
         parent, = rows[0]
 
 
         for folder in file.path[1:]:
-            rows = self.conn.cursor().execute("""
+            rows = self.query("""
                     SELECT id FROM folders
-                    WHERE parent = ? AND name = ?
-                """, (parent, file.course))
+                    WHERE parent = :par AND name = :name
+                """, par=parent, name=file.course)
             if not rows:
-                self.conn.cursor().execute("""
+                self.query("""
                         INSERT INTO folders (name, parent)
-                        VALUES(?, ?)
-                    """, (folder, parent))
+                        VALUES(:name, :par)
+                    """, name=folder, par=parent, expected_rows=0)
 
-        self.conn.cursor().execute("""
+        self.query("""
                 INSERT INTO files (id, folder, name, created)
-                VALUES (?, ?, ?);
-            """, (file.id, parent, file.name, file.created))
+                VALUES (:id, :par, :name, :creat);
+            """, id=file.id, par=parent, name=file.name, creat=file.created, expected_rows=0)
 
     def commit(self):
         self.conn.commit()
