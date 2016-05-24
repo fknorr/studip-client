@@ -172,6 +172,7 @@ class Database:
 
 
     def add_file(self, file):
+        print(file.path)
         rows = self.query("""
                 SELECT id FROM folders
                 WHERE course = :course AND name = :name
@@ -198,6 +199,11 @@ class Database:
                         INSERT INTO folders (name, parent)
                         VALUES(:name, :par)
                     """, name=folder, par=parent, expected_rows=0)
+                rows = self.query("""
+                        SELECT id FROM folders
+                        WHERE parent = :par AND name = :name
+                    """, par=parent, name=folder)
+            parent, = rows[0]
 
         self.query("""
                 INSERT INTO files (id, folder, name, created)
