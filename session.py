@@ -33,7 +33,6 @@ class Session:
         remote_courses = parse_course_list(self.overview_page)
 
         db_courses = self.db.list_courses()
-        print([c for c in db_courses])
         new_courses = (course for course in remote_courses if course not in db_courses)
         removed_courses = (course for course in db_courses if course not in remote_courses)
 

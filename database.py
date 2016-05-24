@@ -74,16 +74,19 @@ class Database:
                     FOREIGN KEY (parent) REFERENCES folders(id),
                     CHECK ((parent IS NULL) != (course IS NULL))
                 );
-                CREATE VIEW IF NOT EXISTS file_paths(id, path) AS
-                    WITH RECURSIVE parent_dir(file, level, parent, name) AS (
-                        SELECT files.id, 0, folders.parent, folders.name FROM folders
+                CREATE VIEW IF NOT EXISTS file_paths(id, course, path) AS
+                    WITH RECURSIVE parent_dir(file, level, course, parent, name) AS (
+                        SELECT files.id, 0, folders.course, folders.parent, folders.name
+                            FROM folders
                             INNER JOIN files ON files.folder = folders.id
                         UNION ALL
-                        SELECT parent_dir.file, parent_dir.level + 1, folders.parent,
-                                folders.name FROM folders
+                        SELECT parent_dir.file, parent_dir.level + 1, folders.course,
+                                folders.parent, folders.name
+                            FROM folders
                             INNER JOIN parent_dir ON folders.id = parent_dir.parent
                     )
-                    SELECT file, GROUP_CONCAT(name, '/') FROM (
+                    -- MAX() selects the largest (here = the only) non-null element
+                    SELECT file, MAX(course), GROUP_CONCAT(name, '/') FROM (
                         SELECT * FROM parent_dir ORDER BY level DESC
                     ) GROUP BY (file);
             """.format(len(SyncMode)+1))
@@ -163,46 +166,43 @@ class Database:
                 if enable ]
 
         rows = self.query("""
-                SELECT files.id FROM files
-                INNER JOIN folders ON files.folder = folders.id
-                INNER JOIN courses ON folders.course = courses.id
+                SELECT file_paths.id FROM file_paths
+                INNER JOIN courses ON file_paths.course = courses.id
                 WHERE courses.sync IN ({});
             """.format(", ".join(sync_modes)))
         return [id for (id,) in rows]
 
 
     def add_file(self, file):
-        print(file.path)
-        rows = self.query("""
-                SELECT id FROM folders
-                WHERE course = :course AND name = :name
-            """, course=file.course, name=file.path[0])
+        def query_root_directory():
+            return self.query("""
+                    SELECT id FROM folders
+                    WHERE course = :course AND name = :name
+                """, course=file.course, name=file.path[0])
+
+        rows = query_root_directory()
         if not rows:
             self.query("""
                     INSERT INTO folders (name, course)
                     VALUES (:name, :course)
                 """, name=file.path[0], course=file.course, expected_rows=0)
-            rows = self.query("""
-                    SELECT id FROM folders
-                    WHERE course = :course AND name = :name
-                """, course=file.course, name=file.path[0])
+            rows = query_root_directory()
         parent, = rows[0]
 
-
         for folder in file.path[1:]:
-            rows = self.query("""
-                    SELECT id FROM folders
-                    WHERE parent = :par AND name = :name
-                """, par=parent, name=folder)
+            def query_subdirectory():
+                return self.query("""
+                        SELECT id FROM folders
+                        WHERE parent = :par AND name = :name
+                    """, par=parent, name=folder)
+
+            rows = query_subdirectory()
             if not rows:
                 self.query("""
                         INSERT INTO folders (name, parent)
                         VALUES(:name, :par)
                     """, name=folder, par=parent, expected_rows=0)
-                rows = self.query("""
-                        SELECT id FROM folders
-                        WHERE parent = :par AND name = :name
-                    """, par=parent, name=folder)
+                rows = query_subdirectory()
             parent, = rows[0]
 
         self.query("""
