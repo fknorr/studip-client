@@ -31,14 +31,16 @@ class Session:
 
     def update_metadata(self):
         remote_courses = parse_course_list(self.overview_page)
+        remote_course_ids = [course.id for course in remote_courses]
 
-        db_courses = self.db.list_courses()
-        new_courses = (course for course in remote_courses if course not in db_courses)
-        removed_courses = (course for course in db_courses if course not in remote_courses)
+        db_course_ids = self.db.list_courses()
+        new_courses = (course for course in remote_courses if course.id not in db_course_ids)
+        removed_course_ids = (id for id in db_course_ids if id not in remote_course_ids)
 
-        for course in removed_courses:
+        for course_id in removed_course_ids:
+            course = self.db.get_course_details(course_id)
             choice = prompt_choice("Delete data for removed course \"{}\"? ([Y]es, [n]o)".format(
-                    ellipsize(course["name"], 50)), "yn", default="y")
+                    ellipsize(course.name, 50)), "yn", default="y")
             if choice == "y":
                 self.db.delete_course(course)
 
@@ -110,7 +112,7 @@ class Session:
                     print()
                     first_file = False
                 print("Downloading file {}...".format(rel_path))
-                url = config["studip_base"] + "/studip/sendfile.php?force_download=1&type=0&" \
+                url = self.config["studip_base"] + "/studip/sendfile.php?force_download=1&type=0&" \
                         + urlencode({"file_id": file.id, "file_name": file.name })
                 r = self.http.get(url)
                 with open(abs_path, "wb") as file:

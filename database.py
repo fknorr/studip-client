@@ -165,12 +165,25 @@ class Database:
                 (select_sync_metadata_only, SyncMode.Metadata), (select_sync_no, SyncMode.NoSync) ]
                 if enable ]
 
-        rows = self.query("""
-                SELECT file_paths.id FROM file_paths
-                INNER JOIN courses ON file_paths.course = courses.id
-                WHERE courses.sync IN ({});
-            """.format(", ".join(sync_modes)))
-        return [id for (id,) in rows]
+        if full:
+            rows = self.query("""
+                    SELECT files.id, courses.id, courses.name || '/' || file_paths.path, files.name,
+                            files.created
+                    FROM file_paths
+                    INNER JOIN files ON file_paths.id = files.id
+                    INNER JOIN courses ON file_paths.course = courses.id
+                    WHERE courses.sync IN ({});
+                """.format(", ".join(sync_modes)))
+            return [ File(id, course, path, name, created) for id, course, path, name, created
+                    in rows ]
+
+        else:
+            rows = self.query("""
+                    SELECT file_paths.id FROM file_paths
+                    INNER JOIN courses ON file_paths.course = courses.id
+                    WHERE courses.sync IN ({});
+                """.format(", ".join(sync_modes)))
+            return [id for (id,) in rows]
 
 
     def add_file(self, file):
