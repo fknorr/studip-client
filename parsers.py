@@ -11,9 +11,18 @@ def get_url_field(url, field):
     return query[field][0] if field in query else None
 
 
+class ParserError(Exception):
+    def __init__(self, message=""):
+        self.message = message
+
+    def __repr__(self):
+        return "ParserError({})".format(repr(self.message))
+
+
 def create_parser_and_feed(parser_class, html):
     parser = parser_class()
     parser.feed(html)
+
     return parser
 
 

@@ -1,102 +1,153 @@
-import requests
-from html.parser import HTMLParser
+import sqlite3
 from enum import IntEnum
-import urllib.parse as urlparse
-import json, appdirs, os, sys
-from pathlib import Path
-from getpass import getpass
-
-from parsers import parse_course_list, parse_file_list, parse_file_details
-from util import prompt_choice, ellipsize
+from collections import namedtuple
 
 
-class Database(dict):
-    def __init__(self, config):
-        super().__init__({
-            "files" : {},
-            "courses" : {}
-        })
+SyncMode = IntEnum("SyncMode", "NoSync Metadata Full")
+Course = namedtuple("Course", [ "id", "number", "name", "sync" ])
+File = namedtuple("File", [ "id", "course", "path", "name", "created" ])
+Folder = namedtuple("Folder", [ "id", "name", "parent", "course" ])
+
+
+class Database:
+
+    def __init__(self, config, file_name):
         self.config = config
+        self.conn = sqlite3.connect(file_name, detect_types=sqlite3.PARSE_DECLTYPES)
 
-    def read(self, file_name):
-        with open(file_name, "r") as file:
-            self.update(json.load(file))
+        self.conn.cursor().executescript("""
+                CREATE TABLE IF NOT EXISTS courses (
+                    id CHAR(32) NOT NULL,
+                    number VARCHAR(8) DEFAULT "",
+                    name VARCHAR(128) NOT NULL,
+                    sync SMALLINT NOT NULL,
+                    PRIMARY KEY (id ASC),
+                    CHECK (sync >= 0 AND sync < {})
+                );
+                CREATE TABLE IF NOT EXISTS files (
+                    id CHAR(32) NOT NULL,
+                    folder INTEGER NOT NULL,
+                    name VARCHAR(128) NOT NULL,
+                    created TIMESTAMP,
+                    PRIMARY KEY (id ASC),
+                    FOREIGN KEY (folder) REFERENCES folders(id)
+                );
+                CREATE TABLE IF NOT EXISTS folders (
+                    id INTEGER NOT NULL,
+                    name VARCHAR(128),
+                    parent INTEGER,
+                    course char(32),
+                    PRIMARY KEY (id ASC),
+                    FOREIGN KEY (course) REFERENCES courses(id),
+                    FOREIGN KEY (parent) REFERENCES folders(id),
+                    CHECK ((parent IS NULL) != (course IS NULL))
+                );
+                CREATE VIEW IF NOT EXISTS file_paths(id, path) AS
+                    WITH RECURSIVE parent_dir(file, level, parent, name) AS (
+                        SELECT files.id, 0, folders.parent, folders.name FROM folders
+                            INNER JOIN files ON files.folder = folders.id
+                        UNION ALL
+                        SELECT parent_dir.file, parent_dir.level + 1, folders.parent,
+                                folders.name FROM folders
+                            INNER JOIN parent_dir ON folders.id = parent_dir.parent
+                    )
+                    SELECT file, GROUP_CONCAT(name, '/') FROM (
+                        SELECT * FROM parent_dir ORDER BY level DESC
+                    ) GROUP BY (file);
+            """.format(len(SyncMode)+1))
+        self.conn.commit()
 
 
-    def write(self, file_name):
-        with open(file_name, "w") as file:
-            json.dump(self, file, indent=4)
+    def list_courses(self, full=False, select_sync_yes=True, select_sync_metadata_only=True,
+            select_sync_no=True):
+        sync_modes = [ str(int(enum)) for enable, enum in [ (select_sync_yes, SyncMode.Full),
+                (select_sync_metadata_only, SyncMode.Metadata), (select_sync_no, SyncMode.NoSync) ]
+                if enable ]
+
+        rows = self.conn.cursor().execute("""
+                SELECT {} FROM courses
+                WHERE sync IN ({});
+            """.format("*" if full else "id", ", ".join(sync_modes)))
+
+        if full:
+            return [ Course(id, number, name, Mode(sync)) for id, number, name, sync in rows ]
+        else:
+            return [ id for (id,) in rows ]
 
 
-    def fetch(self, session, overview_page):
-        db_courses = self["courses"]
-        db_files = self["files"]
+    def get_course_details(self, course_id):
+        rows = self.conn.cursor().execute("""
+                SELECT number, name, sync
+                FROM courses
+                WHERE courses.id = ?;
+            """, course_id)
+        number, name, sync = rows[0]
+        return Course(id=course_id, number=number, name=name, sync=SyncMode(sync))
 
-        remote_courses = parse_course_list(overview_page)
 
-        new_courses = (course for course in remote_courses if course not in db_courses)
-        removed_courses = (course for course in db_courses if course not in remote_courses)
+    def add_course(self, course):
+        self.conn.cursor().execute("""
+                INSERT INTO courses
+                VALUES (?, ?, ?, ?);
+            """, (course.id, course.number, course.name, int(course.sync)))
 
-        for course in removed_courses:
-            choice = prompt_choice("Delete data for removed course \"{}\"? ([Y]es, [n]o)".format(
-                    ellipsize(course["name"], 50)), "yn", default="y")
-            if choice == "y":
-                del db_courses[course]
-                for file_id, details in db_files:
-                    if details["course"] == course:
-                        del db_files[file_id]
 
-        for course_id in new_courses:
-            course = remote_courses[course_id]
-            sync = prompt_choice("Synchronize \"{}\"? ([Y]es, [n]o, [m]etadata only)".format(
-                    ellipsize(course["name"], 50)), "ynm", default="y")
-            course["sync"] = { "y" : "yes", "n" : "no", "m" : "metadata only" }[sync]
-            db_courses[course_id] = course
+    def delete_course(self, course):
+        self.conn.cursor().execute("""
+                DELETE FROM courses
+                WHERE id = ?;
+            """, course.id)
 
-        sync_courses = (course for course in db_courses if db_courses[course]["sync"] != "no")
-        last_course_synced = False
-        for course_id in sync_courses:
-            course = db_courses[course_id]
 
-            base_url = self.config["studip_base"] + "/studip"
-            course_url = base_url + "/seminar_main.php?auswahl=" + course_id
-            folder_url = base_url + "/folder.php?cid=" + course_id + "&cmd=all"
+    def list_files(self, full=False, select_sync_yes=True, select_sync_metadata_only=True,
+            select_sync_no=True):
+        Mode = SyncMode
+        sync_modes = [ str(int(enum)) for enable, enum in [ (select_sync_yes, SyncMode.Full),
+                (select_sync_metadata_only, SyncMode.Metadata), (select_sync_no, SyncMode.NoSync) ]
+                if enable ]
 
-            try:
-                session.get(course_url, timeout=(None, 0))
-            except (KeyboardInterrupt, SystemExit):
-                raise
-            except requests.Timeout:
-                pass
+        rows = self.conn.cursor().execute("""
+                SELECT files.id FROM files
+                INNER JOIN folders ON files.folder = folders.id
+                INNER JOIN courses ON folders.course = courses.id
+                WHERE courses.sync IN ({});
+            """.format(", ".join(sync_modes)))
+        return [id for (id,) in rows]
 
-            r = session.get(folder_url)
-            file_list = parse_file_list(r.text)
 
-            if last_course_synced:
-                print()
+    def add_file(self, file):
+        rows = self.conn.cursor().execute("""
+                SELECT id FROM folders
+                WHERE course = ? AND name = ?
+            """, (file.course, file.path[0]))
+        if not rows:
+            self.conn.cursor().execute("""
+                    INSERT INTO folders (name, course)
+                    VALUES (?, ?)
+                """, (file.path[0], file.course))
+            rows = self.conn.cursor().execute("""
+                    SELECT id FROM folders
+                    WHERE course = ? AND name = ?
+                """, (file.course, file.path[0]))
+        parent, = rows[0]
 
-            new_files = [file_id for file_id in file_list if file_id not in db_files]
-            if len(new_files) > 0 :
-                if not last_course_synced:
-                    print()
-                print(len(new_files), end="")
-                last_course_synced = True
-            else:
-                print("No", end="")
-                last_course_synced = False
-            print(" new files for " + course["name"])
 
-            for i, file_id in enumerate(new_files):
-                print("Fetching metadata for file {}/{}...".format(i+1, len(new_files)),
-                        end="", flush=True)
+        for folder in file.path[1:]:
+            rows = self.conn.cursor().execute("""
+                    SELECT id FROM folders
+                    WHERE parent = ? AND name = ?
+                """, (parent, file.course))
+            if not rows:
+                self.conn.cursor().execute("""
+                        INSERT INTO folders (name, parent)
+                        VALUES(?, ?)
+                    """, (folder, parent))
 
-                open_url = folder_url + "&open=" + file_id
-                r = session.get(open_url)
-                details = parse_file_details(r.text)
-                if all(attr in details for attr in ["name", "url", "folder"]):
-                    details["course"] = course_id
-                    db_files[file_id] = details
-                    print(" " + details["description"])
-                else:
-                    print(" <bad format>")
+        self.conn.cursor().execute("""
+                INSERT INTO files (id, folder, name, created)
+                VALUES (?, ?, ?);
+            """, (file.id, parent, file.name, file.created))
+
+    def commit(self):
+        self.conn.commit()
 
