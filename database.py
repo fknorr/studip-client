@@ -192,7 +192,7 @@ class Database:
             rows = self.query("""
                     SELECT id FROM folders
                     WHERE parent = :par AND name = :name
-                """, par=parent, name=file.course)
+                """, par=parent, name=folder)
             if not rows:
                 self.query("""
                         INSERT INTO folders (name, parent)
@@ -203,6 +203,7 @@ class Database:
                 INSERT INTO files (id, folder, name, created)
                 VALUES (:id, :par, :name, :creat);
             """, id=file.id, par=parent, name=file.name, creat=file.created, expected_rows=0)
+
 
     def commit(self):
         self.conn.commit()
