@@ -1,5 +1,6 @@
 import requests
 import os
+import time
 
 from parsers import *
 import database
@@ -115,5 +116,7 @@ class Session:
                 url = self.config["studip_base"] + "/studip/sendfile.php?force_download=1&type=0&" \
                         + urlencode({"file_id": file.id, "file_name": file.name })
                 r = self.http.get(url)
-                with open(abs_path, "wb") as file:
-                    file.write(r.content)
+                with open(abs_path, "wb") as writer:
+                    writer.write(r.content)
+                    timestamp = time.mktime(file.created.timetuple())
+                    os.utime(writer.fileno(), (timestamp, timestamp))
