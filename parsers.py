@@ -20,32 +20,69 @@ class ParserError(Exception):
         return "ParserError({})".format(repr(self.message))
 
 
+class StopParsing(Exception):
+    pass
+
+
 def create_parser_and_feed(parser_class, html):
     parser = parser_class()
-    parser.feed(html)
+    try:
+        parser.feed(html)
+    except StopParsing:
+        pass
 
     return parser
 
 
 class SAMLFormParser(HTMLParser):
+    fields = [ "RelayState", "SAMLResponse" ]
+
+    def __init__(self):
+        super().__init__()
+        self.form_data = {}
+
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
         if tag == "input" and "name" in attrs and "value" in attrs:
-            if attrs["name"] == "RelayState":
-                self.relay_state = attrs["value"]
-            elif attrs["name"] == "SAMLResponse":
-                self.saml_response = attrs["value"]
+            if attrs["name"] in SAMLFormParser.fields:
+                self.form_data[attrs["name"]] = attrs["value"]
+        if self.is_complete():
+            raise StopParsing
 
-    def form_data(self):
-        return { "RelayState" : self.relay_state, "SAMLResponse" : self.saml_response }
+    def is_complete(self):
+        return all(f in self.form_data for f in SAMLFormParser.fields)
 
 def parse_saml_form(html):
-    return create_parser_and_feed(SAMLFormParser, html).form_data()
+    parser = create_parser_and_feed(SAMLFormParser, html)
+    if parser.is_complete():
+        return parser.form_data
+    else:
+        raise ParserError("SAMLForm")
+
+
+class SelectedSemesterParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.semester = None
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "option":
+            attrs = dict(attrs)
+            if "selected" in attrs and "value" in attrs:
+                self.semester = attrs["value"]
+                raise StopParsing()
+
+def parse_selected_semester(html):
+    parser = create_parser_and_feed(SelectedSemesterParser, html)
+    if parser.semester:
+        return parser.semester
+    else:
+        raise ParserError("SelectedSemester")
 
 
 class CourseListParser(HTMLParser):
     State = IntEnum("State", "before_sem before_thead_end before_tr "
-        "tr td_group td_img td_id td_name after_td after_sem")
+        "tr td_group td_img td_id td_name after_td")
 
     def __init__(self):
         super().__init__()
@@ -71,7 +108,7 @@ class CourseListParser(HTMLParser):
     def handle_endtag(self, tag):
         State = CourseListParser.State
         if tag == "div" and self.state != State.before_sem:
-            self.state = State.after_sem
+            raise StopParsing
         elif self.state == State.before_thead_end:
             if tag == "thead":
                 self.state = State.before_tr
@@ -194,8 +231,8 @@ class FileDetailsParser(HTMLParser):
         if tag == "div" and self.state in [ State.file_0_div, State.in_open_div ]:
             if self.div_depth > 0:
                 self.div_depth -= 1
-            else:
-                self.state = State.outside
+            elif self.file.id is not None:
+                raise StopParsing()
         elif tag == "a" and self.state == State.in_folder_a:
             self.state = State.in_open_div
         elif tag == "span" and self.state == State.in_header_span:

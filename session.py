@@ -31,6 +31,10 @@ class Session:
 
 
     def update_metadata(self):
+        if parse_selected_semester(self.overview_page) != "current":
+            url = self.config["studip_base"] + "/studip/dispatch.php/my_courses/set_semester"
+            self.overview_page = self.http.post(url, data={ "sem_select": "current" }).text
+
         remote_courses = parse_course_list(self.overview_page)
         remote_course_ids = [course.id for course in remote_courses]
 
