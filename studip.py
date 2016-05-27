@@ -14,11 +14,16 @@ from session import Session
 
 
 def configure():
-    global command_line, config, user_name, password, sync_dir
+    global command_line, config, user_name, password, sync_dir, dot_dir
 
-    config_dir = appdirs.user_config_dir("studip-client", "fknorr")
-    os.makedirs(config_dir, exist_ok=True)
-    config_file_name = config_dir + "/config.json"
+    if "sync_dir" in command_line:
+        sync_dir = command_line["sync_dir"]
+    else:
+        sync_dir = input("Sync directory [{}]: ".format(default_dir))
+
+    dot_dir = sync_dir + "/.studip"
+    os.makedirs(dot_dir, exist_ok=True)
+    config_file_name = dot_dir + "/config.json"
 
     config = {
         "studip_base" : "https://studip.uni-passau.de",
@@ -32,22 +37,6 @@ def configure():
         raise
     except:
         pass
-
-    if "sync_dir" in command_line:
-        if command_line["sync_dir"] is None:
-            if "sync_dir" in config:
-                sync_dir = command_line["sync_dir"] = config["sync_dir"]
-            else:
-                default_dir = os.path.expanduser("~/StudIP")
-                sync_dir = input("Sync directory [{}]: ".format(default_dir))
-                if not sync_dir:
-                    sync_dir = default_dir
-                config["sync_dir"] = sync_dir
-                command_line["sync_dir"] = sync_dir
-        else:
-            sync_dir = command_line["sync_dir"]
-    else:
-        sync_dir = None
 
     if "user_name" in config:
         user_name = config["user_name"]
@@ -88,11 +77,8 @@ def open_session():
 
 
 def open_database():
-    global database, db_file_name, config
-
-    cache_dir = appdirs.user_cache_dir("studip-client", "fknorr")
-    os.makedirs(cache_dir, exist_ok = True)
-    db_file_name = cache_dir + "/db.sqlite"
+    global database, db_file_name, config, dot_dir
+    db_file_name = dot_dir + "/db.sqlite"
 
     try:
         database = Database(db_file_name)
@@ -134,23 +120,22 @@ Possible operations:
 
 
 def parse_command_line():
-    if len(sys.argv) < 2: return False
+    if len(sys.argv) < 2 or len(sys.argv) > 3:
+        return False
 
     global command_line
     command_line = {}
 
     op = sys.argv[1]
-    if op == "update":
-        if len(sys.argv) != 2: return False
-    elif op == "download" or op == "sync":
-        if len(sys.argv) > 3: return False
-        command_line["sync_dir"] = sys.argv[2] if len(sys.argv) == 3 else None
-    elif op == "help" or op == "--help" or op == "-h":
+    if op == "help" or op == "--help" or op == "-h":
         op = "help"
-    else:
+    elif op not in [ "update", "download" ]:
         return False
-
     command_line["operation"] = op
+
+    if len(sys.argv) >= 3:
+        command_line["sync_dir"] = sys.argv[2]
+
     return True
 
 
