@@ -2,7 +2,7 @@ import requests
 from html.parser import HTMLParser
 from enum import IntEnum
 import urllib.parse as urlparse
-import json, appdirs, os, sys
+import json, os, sys
 from pathlib import Path
 from getpass import getpass
 from errno import ENOENT
@@ -19,7 +19,10 @@ def configure():
     if "sync_dir" in command_line:
         sync_dir = command_line["sync_dir"]
     else:
-        sync_dir = input("Sync directory [{}]: ".format(default_dir))
+        default_dir = os.path.expanduser("~/StudIP")
+        sync_dir = os.path.expanduser(input("Sync directory [{}]: ".format(default_dir)))
+        if not sync_dir:
+            sync_dir = default_dir
 
     dot_dir = sync_dir + "/.studip"
     os.makedirs(dot_dir, exist_ok=True)
@@ -78,7 +81,7 @@ def open_session():
 
 def open_database():
     global database, db_file_name, config, dot_dir
-    db_file_name = dot_dir + "/db.sqlite"
+    db_file_name = dot_dir + "/cache.sqlite"
 
     try:
         database = Database(db_file_name)
@@ -129,7 +132,7 @@ def parse_command_line():
     op = sys.argv[1]
     if op == "help" or op == "--help" or op == "-h":
         op = "help"
-    elif op not in [ "update", "download" ]:
+    elif op not in [ "update", "download", "sync" ]:
         return False
     command_line["operation"] = op
 
