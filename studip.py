@@ -2,10 +2,10 @@ import requests
 from html.parser import HTMLParser
 from enum import IntEnum
 import urllib.parse as urlparse
-import json, os, sys
-from pathlib import Path
+import os, sys
 from getpass import getpass
 from errno import ENOENT
+from configparser import ConfigParser
 
 from parsers import *
 from database import Database
@@ -26,50 +26,56 @@ def configure():
 
     dot_dir = sync_dir + "/.studip"
     os.makedirs(dot_dir, exist_ok=True)
-    config_file_name = dot_dir + "/config.json"
+    config_file_name = dot_dir + "/studip.conf"
 
-    config = {
+    config = ConfigParser()
+    config["server"] = {
         "studip_base" : "https://studip.uni-passau.de",
         "sso_base" : "https://sso.uni-passau.de"
     }
+    config["user"] = {}
 
     try:
-        with open(config_file_name, "r") as file:
-            config.update(json.load(file))
+        with open(config_file_name, "r", encoding="utf-8") as file:
+            config.read_file(file)
     except (KeyboardInterrupt, SystemExit):
         raise
-    except:
-        pass
+    except Exception as e:
+        if not (e is IOError and e.errno == ENOENT):
+            sys.stderr.write("Error reading configuration from {}: {}\n".format(config_file_name,
+                    e.strerror))
+            sys.stderr.write("Starting over with a fresh configuration\n")
 
-    if "user_name" in config:
-        user_name = config["user_name"]
+    user_config = config["user"]
+    if "user_name" in user_config:
+        user_name = user_config["user_name"]
     else:
         user_name = input("Stud.IP user name: ")
 
-    if "password" in config:
-        password = config["password"]
+    if "password" in user_config:
+        password = user_config["password"]
     else:
         password = getpass()
 
-    if "save_login" in config and config["save_login"][0] in "ynu":
-        save_login = config["save_login"][0]
+    if "save_login" in user_config and user_config["save_login"][0] in "ynu":
+        save_login = user_config["save_login"][0]
     else:
         save_login = prompt_choice("Save login? ([Y]es, [n]o, [u]ser name only)", "ynu",
                 default="y")
-        config["save_login"] = { "y" : "yes", "n" : "no", "u" : "user name only" }[save_login]
+        user_config["save_login"] = { "y" : "yes", "n" : "no", "u" : "user name only" }[save_login]
 
     if save_login in "yu":
-        config["user_name"] = user_name
+        user_config["user_name"] = user_name
     if save_login == "y":
-        config["password"] = password
+        user_config["password"] = password
 
     try:
-        with open(config_file_name, "w") as file:
-            json.dump(config, file, indent=4)
+        with open(config_file_name, "w", encoding="utf-8") as file:
+            config.write(file)
     except (KeyboardInterrupt, SystemExit):
         raise
     except:
-        sys.stderr.write("Unable to write to {}\n".format(config_file_name))
+        sys.stderr.write("Error: Unable to write to {}\n".format(config_file_name))
         sys.exit(1)
 
 

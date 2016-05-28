@@ -11,28 +11,35 @@ from urllib.parse import urlencode
 
 
 class Session:
+    def sso_url(self, url):
+        return self.server_config["sso_base"] + url
+
+    def studip_url(self, url):
+        return self.server_config["studip_base"] + url
+
+
     def __init__(self, config, db, user_name, password, sync_dir):
         self.db = db
-        self.config = config
+        self.server_config = config["server"]
         self.sync_dir = sync_dir
 
         self.http = requests.session()
-        self.http.get(config["studip_base"] + "/studip/index.php?again=yes&sso=shib")
+        self.http.get(self.studip_url("/studip/index.php?again=yes&sso=shib"))
 
-        r = self.http.post(config["sso_base"] + "/idp/Authn/UserPassword", data = {
+        r = self.http.post(self.sso_url("/idp/Authn/UserPassword"), data = {
             "j_username": user_name,
             "j_password": password,
             "uApprove.consent-revocation": ""
         })
 
         form_data = parse_saml_form(r.text)
-        r = self.http.post(config["studip_base"] + "/Shibboleth.sso/SAML2/POST", form_data)
+        r = self.http.post(self.studip_url("/Shibboleth.sso/SAML2/POST"), form_data)
         self.overview_page = r.text
 
 
     def update_metadata(self):
         if parse_selected_semester(self.overview_page) != "current":
-            url = self.config["studip_base"] + "/studip/dispatch.php/my_courses/set_semester"
+            url = self.studip_url("/studip/dispatch.php/my_courses/set_semester")
             self.overview_page = self.http.post(url, data={ "sem_select": "current" }).text
 
         remote_courses = parse_course_list(self.overview_page)
@@ -60,9 +67,8 @@ class Session:
         last_course_synced = False
         db_files = self.db.list_files()
         for course in sync_courses:
-            base_url = self.config["studip_base"] + "/studip"
-            course_url = base_url + "/seminar_main.php?auswahl=" + course.id
-            folder_url = base_url + "/folder.php?cid=" + course.id + "&cmd=all"
+            course_url = self.studip_url("/studip/seminar_main.php?auswahl=" + course.id)
+            folder_url = self.studip_url("/studip/folder.php?cid=" + course.id + "&cmd=all")
 
             try:
                 self.http.get(course_url, timeout=(None, 0))
@@ -117,8 +123,8 @@ class Session:
                     print()
                     first_file = False
                 print("Downloading file {}...".format(rel_path))
-                url = self.config["studip_base"] + "/studip/sendfile.php?force_download=1&type=0&" \
-                        + urlencode({"file_id": file.id, "file_name": file.name })
+                url = self.studip_url("/studip/sendfile.php?force_download=1&type=0&" \
+                        + urlencode({"file_id": file.id, "file_name": file.name }))
                 r = self.http.get(url)
                 with open(abs_path, "wb") as writer:
                     writer.write(r.content)
