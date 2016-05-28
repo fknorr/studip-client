@@ -6,6 +6,7 @@ import os, sys
 from getpass import getpass
 from errno import ENOENT
 from configparser import ConfigParser
+import appdirs
 
 from parsers import *
 from database import Database
@@ -13,19 +14,49 @@ from util import prompt_choice
 from session import Session
 
 
-def configure():
-    global command_line, config, user_name, password, sync_dir, dot_dir
+def setup_sync_dir():
+    global command_line, sync_dir, dot_dir
+
+    cache_dir = appdirs.user_cache_dir("studip", "fknorr")
+    os.makedirs(cache_dir, exist_ok=True)
+    history_file_name = appdirs.user_cache_dir("studip", "fknorr") + "/history"
+    history = []
+    try:
+        with open(history_file_name, "r", encoding="utf-8") as file:
+            history = list(filter(None, file.read().splitlines()))
+    except Exception:
+        pass
 
     if "sync_dir" in command_line:
         sync_dir = command_line["sync_dir"]
     else:
-        default_dir = os.path.expanduser("~/StudIP")
-        sync_dir = os.path.expanduser(input("Sync directory [{}]: ".format(default_dir)))
-        if not sync_dir:
-            sync_dir = default_dir
+        if history:
+            sync_dir = history[0]
+            print("Using last sync directory {} ...".format(sync_dir))
+        else:
+            default_dir = os.path.expanduser("~/StudIP")
+            sync_dir = os.path.expanduser(input("Sync directory [{}]: ".format(default_dir)))
+            if not sync_dir:
+                sync_dir = default_dir
+
+    while sync_dir in history:
+        history.remove(sync_dir)
+    history.insert(0, sync_dir)
+
+    try:
+        with open(history_file_name, "w", encoding="utf-8") as file:
+            file.write("\n".join(history) + "\n")
+    except Exception:
+        sys.stderr.write("Error: Unable to write to {}\n".format(history_file_name))
+        sys.exit(1)
 
     dot_dir = sync_dir + "/.studip"
     os.makedirs(dot_dir, exist_ok=True)
+
+
+def configure():
+    global config, user_name, password, dot_dir
+
     config_file_name = dot_dir + "/studip.conf"
 
     config = ConfigParser()
@@ -38,10 +69,8 @@ def configure():
     try:
         with open(config_file_name, "r", encoding="utf-8") as file:
             config.read_file(file)
-    except (KeyboardInterrupt, SystemExit):
-        raise
     except Exception as e:
-        if not (e is IOError and e.errno == ENOENT):
+        if not (isinstance(e, IOError) and e.errno == ENOENT):
             sys.stderr.write("Error reading configuration from {}: {}\n".format(config_file_name,
                     e.strerror))
             sys.stderr.write("Starting over with a fresh configuration\n")
@@ -72,9 +101,7 @@ def configure():
     try:
         with open(config_file_name, "w", encoding="utf-8") as file:
             config.write(file)
-    except (KeyboardInterrupt, SystemExit):
-        raise
-    except:
+    except Exception:
         sys.stderr.write("Error: Unable to write to {}\n".format(config_file_name))
         sys.exit(1)
 
@@ -91,10 +118,9 @@ def open_database():
 
     try:
         database = Database(db_file_name)
-    except IOError as e:
-        if e.errno != ENOENT:
-            sys.stderr.write("Error: Unable to open file {}: {}\n".format(db_file_name, e.strerror))
-            sys.exit(1)
+    except Exception as e:
+        sys.stderr.write("Error: Unable to open database " + db_file_name)
+        sys.exit(1)
 
 
 def update_database():
@@ -155,6 +181,7 @@ def main():
         show_usage(sys.stderr)
         sys.exit(1)
 
+    setup_sync_dir()
     configure()
     open_database()
     open_session()
