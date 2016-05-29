@@ -164,15 +164,15 @@ class Application:
 
 
     def show_usage(self, out):
-        out.write("""Usage: {} <operation> <parameters>
-
-    Possible operations:
-        update        Update course database from Stud.IP
-        download      Download missing files from known database
-        sync          <update>, then <download>
-        clear-cache   Clear local course and file database
-        help          Show this synopsis
-    """.format(sys.argv[0]))
+        out.write(
+            "Usage: {} <operation> <parameters>\n\n"
+            "Possible operations:\n"
+            "    update        Update course database from Stud.IP\n"
+            "    download      Download missing files from known database\n"
+            "    sync          <update>, then <download>\n"
+            "    clear-cache   Clear local course and file database\n"
+            "    help          Show this synopsis\n"
+            .format(sys.argv[0]))
 
 
     def parse_command_line(self):

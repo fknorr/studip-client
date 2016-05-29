@@ -1,4 +1,4 @@
-import sqlite3
+import sqlite3, os
 from enum import IntEnum
 from collections import namedtuple
 
@@ -47,49 +47,11 @@ class Database:
     def __init__(self, file_name):
         self.conn = sqlite3.connect(file_name, detect_types=sqlite3.PARSE_DECLTYPES)
 
-        self.query_script("""
-                CREATE TABLE IF NOT EXISTS courses (
-                    id CHAR(32) NOT NULL,
-                    number VARCHAR(8) DEFAULT "",
-                    name VARCHAR(128) NOT NULL,
-                    sync SMALLINT NOT NULL,
-                    PRIMARY KEY (id ASC),
-                    CHECK (sync >= 0 AND sync < {})
-                );
-                CREATE TABLE IF NOT EXISTS files (
-                    id CHAR(32) NOT NULL,
-                    folder INTEGER NOT NULL,
-                    name VARCHAR(128) NOT NULL,
-                    created TIMESTAMP,
-                    PRIMARY KEY (id ASC),
-                    FOREIGN KEY (folder) REFERENCES folders(id)
-                );
-                CREATE TABLE IF NOT EXISTS folders (
-                    id INTEGER NOT NULL,
-                    name VARCHAR(128),
-                    parent INTEGER,
-                    course char(32),
-                    PRIMARY KEY (id ASC),
-                    FOREIGN KEY (course) REFERENCES courses(id),
-                    FOREIGN KEY (parent) REFERENCES folders(id),
-                    CHECK ((parent IS NULL) != (course IS NULL))
-                );
-                CREATE VIEW IF NOT EXISTS file_paths(id, course, path) AS
-                    WITH RECURSIVE parent_dir(file, level, course, parent, name) AS (
-                        SELECT files.id, 0, folders.course, folders.parent, folders.name
-                            FROM folders
-                            INNER JOIN files ON files.folder = folders.id
-                        UNION ALL
-                        SELECT parent_dir.file, parent_dir.level + 1, folders.course,
-                                folders.parent, folders.name
-                            FROM folders
-                            INNER JOIN parent_dir ON folders.id = parent_dir.parent
-                    )
-                    -- MAX() selects the largest (here = the only) non-null element
-                    SELECT file, MAX(course), GROUP_CONCAT(name, '/') FROM (
-                        SELECT * FROM parent_dir ORDER BY level DESC
-                    ) GROUP BY (file);
-            """.format(len(SyncMode)+1))
+        script_dir = os.path.dirname(os.path.realpath(__file__))
+        with open(script_dir + "/setup.sql", "r") as file:
+            init_script = file.read()
+
+        self.query_script(init_script)
 
 
     def query(self, sql, expected_rows=-1, *args, **kwargs):
@@ -170,7 +132,7 @@ class Database:
                     SELECT files.id, courses.id, courses.name || '/' || file_paths.path, files.name,
                             files.created
                     FROM file_paths
-                    INNER JOIN files ON file_paths.id = files.id
+                    INNER JOIN files ON file_paths.file = files.id
                     INNER JOIN courses ON file_paths.course = courses.id
                     WHERE courses.sync IN ({});
                 """.format(", ".join(sync_modes)))
@@ -179,7 +141,7 @@ class Database:
 
         else:
             rows = self.query("""
-                    SELECT file_paths.id FROM file_paths
+                    SELECT file_paths.file FROM file_paths
                     INNER JOIN courses ON file_paths.course = courses.id
                     WHERE courses.sync IN ({});
                 """.format(", ".join(sync_modes)))
