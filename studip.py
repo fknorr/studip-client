@@ -14,11 +14,24 @@ from util import prompt_choice
 from session import Session
 
 
+def print_io_error(str, source, e):
+    sys.stderr.write("Error: {} {}: {}\n".format(str, source,
+            e.strerror if e.strerror else type(e).__name__))
+
+
+def create_path(dir):
+    try:
+        os.makedirs(dir, exist_ok=True)
+    except Exception as e:
+        print_io_error("Unable to create directory", dir, e)
+        sys.exit(1)
+
+
 def setup_sync_dir():
-    global command_line, sync_dir, dot_dir
+    global command_line, sync_dir, config_file_name, db_file_name
 
     cache_dir = appdirs.user_cache_dir("studip", "fknorr")
-    os.makedirs(cache_dir, exist_ok=True)
+    create_path(cache_dir)
     history_file_name = appdirs.user_cache_dir("studip", "fknorr") + "/history"
     history = []
     try:
@@ -46,18 +59,19 @@ def setup_sync_dir():
     try:
         with open(history_file_name, "w", encoding="utf-8") as file:
             file.write("\n".join(history) + "\n")
-    except Exception:
-        sys.stderr.write("Error: Unable to write to {}\n".format(history_file_name))
+    except Exception as e:
+        print_io_error("Unable to write to", history_file_name, e)
         sys.exit(1)
 
     dot_dir = sync_dir + "/.studip"
-    os.makedirs(dot_dir, exist_ok=True)
+    create_path(dot_dir)
+
+    config_file_name = dot_dir + "/studip.conf"
+    db_file_name = dot_dir + "/cache.sqlite"
 
 
 def configure():
-    global config, user_name, password, dot_dir
-
-    config_file_name = dot_dir + "/studip.conf"
+    global config, user_name, password, config_file_name
 
     config = ConfigParser()
     config["server"] = {
@@ -71,8 +85,7 @@ def configure():
             config.read_file(file)
     except Exception as e:
         if not (isinstance(e, IOError) and e.errno == ENOENT):
-            sys.stderr.write("Error reading configuration from {}: {}\n".format(config_file_name,
-                    e.strerror))
+            print_io_error("Unable to read configuration from", config_file_name, e)
             sys.stderr.write("Starting over with a fresh configuration\n")
 
     user_config = config["user"]
@@ -101,8 +114,8 @@ def configure():
     try:
         with open(config_file_name, "w", encoding="utf-8") as file:
             config.write(file)
-    except Exception:
-        sys.stderr.write("Error: Unable to write to {}\n".format(config_file_name))
+    except Exception as e:
+        print_io_error("Unable to write to", config_file_name, e)
         sys.exit(1)
 
 
@@ -113,13 +126,12 @@ def open_session():
 
 
 def open_database():
-    global database, db_file_name, config, dot_dir
-    db_file_name = dot_dir + "/cache.sqlite"
+    global database, db_file_name, config, db_file_name
 
     try:
         database = Database(db_file_name)
     except Exception as e:
-        sys.stderr.write("Error: Unable to open database " + db_file_name)
+        print_io_error("Unable to open database", db_file_name, e)
         sys.exit(1)
 
 
@@ -143,14 +155,28 @@ def download_files():
     session.download_files()
 
 
+def clear_cache():
+    global db_file_name
+
+    try:
+        os.remove(db_file_name)
+    except Exception as e:
+        if not (isinstance(e, IOError) and e.errno == ENOENT):
+            print_io_error("Unable to remove database file", db_file_name, e)
+            sys.exit(1)
+
+    print("Cache cleared.")
+
+
 def show_usage(out):
     out.write("""Usage: {} <operation> <parameters>
 
 Possible operations:
-    update      Update course database from Stud.IP
-    download    Download missing files from known database
-    sync        <update>, then <download>
-    help        Show this synopsis
+    update        Update course database from Stud.IP
+    download      Download missing files from known database
+    sync          <update>, then <download>
+    clear-cache   Clear local course and file database
+    help          Show this synopsis
 """.format(sys.argv[0]))
 
 
@@ -164,7 +190,7 @@ def parse_command_line():
     op = sys.argv[1]
     if op == "help" or op == "--help" or op == "-h":
         op = "help"
-    elif op not in [ "update", "download", "sync" ]:
+    elif op not in [ "update", "download", "sync", "clear-cache" ]:
         return False
     command_line["operation"] = op
 
@@ -183,17 +209,21 @@ def main():
 
     setup_sync_dir()
     configure()
-    open_database()
-    open_session()
 
     op = command_line["operation"]
-    if op == "update":
-        update_database()
-    elif op == "download":
-        download_files()
-    elif op == "sync":
-        update_database()
-        download_files()
+
+    if op in [ "update", "download", "sync" ]:
+        open_database()
+        open_session()
+        if op == "update":
+            update_database()
+        elif op == "download":
+            download_files()
+        elif op == "sync":
+            update_database()
+            download_files()
+    elif op == "clear-cache":
+        clear_cache()
 
 
 if __name__ == "__main__":
