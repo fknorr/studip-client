@@ -3,7 +3,9 @@ CREATE TABLE IF NOT EXISTS courses (
     number VARCHAR(8) DEFAULT "",
     name VARCHAR(128) NOT NULL,
     sync SMALLINT NOT NULL,
+    root INTEGER,
     PRIMARY KEY (id ASC),
+    FOREIGN KEY (root) REFERENCES folders(id)
     CHECK (sync >= 0 AND sync <= 3) -- 3 == len(SyncMode)
 );
 
@@ -20,12 +22,18 @@ CREATE TABLE IF NOT EXISTS folders (
     id INTEGER NOT NULL,
     name VARCHAR(128),
     parent INTEGER,
-    course char(32),
     PRIMARY KEY (id ASC),
-    FOREIGN KEY (course) REFERENCES courses(id),
     FOREIGN KEY (parent) REFERENCES folders(id),
-    CHECK ((parent IS NULL) != (course IS NULL))
+    CHECK ((name IS NULL) == (parent IS NULL))
 );
+
+CREATE TRIGGER IF NOT EXISTS create_root_folder
+AFTER INSERT ON courses WHEN new.root IS NULL
+BEGIN
+    -- INSERT INTO ... DEFAULT VALUES is not supported inside triggers
+    INSERT INTO folders (parent) VALUES (NULL);
+    UPDATE courses SET root = last_insert_rowid() WHERE id = new.id;
+END;
 
 CREATE VIEW IF NOT EXISTS folder_parents (folder, level, this) AS
     WITH RECURSIVE parents (folder, level, this, parent) AS (
@@ -39,15 +47,18 @@ CREATE VIEW IF NOT EXISTS folder_parents (folder, level, this) AS
     SELECT folder, level, this FROM parents;
 
 CREATE VIEW IF NOT EXISTS folder_paths (folder, course, path) AS
-    -- MAX() selects the largest (here = the only) non-null element
-    SELECT list.folder, MAX(folders.course), GROUP_CONCAT(folders.name, '/')
+    SELECT list.folder, MAX(courses.id), GROUP_CONCAT(folders.name, '/')
     FROM (
         SELECT parents.folder AS folder, parents.this AS this
         FROM folder_parents AS parents
         ORDER BY level DESC
     ) AS list
-    INNER JOIN folders ON folders.id = list.this
-    GROUP BY list.folder;
+    INNER JOIN (
+        SELECT id, CASE WHEN folders.name IS NOT NULL THEN folders.name ELSE '' END AS name
+        FROM folders
+    ) AS folders ON folders.id = list.this
+    LEFT OUTER JOIN courses ON courses.root = folders.id
+    GROUP BY folder;
 
 CREATE VIEW IF NOT EXISTS folder_parent_paths (folder, course, level, path) AS
     SELECT parents.folder, paths.course, parents.level, paths.path

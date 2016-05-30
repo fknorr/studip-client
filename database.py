@@ -87,7 +87,7 @@ class Database:
         rows = self.query("""
                 SELECT {} FROM courses
                 WHERE sync IN ({});
-            """.format("*" if full else "id", ", ".join(sync_modes)))
+            """.format("id, number, name, sync" if full else "id", ", ".join(sync_modes)))
 
         if full:
             return [ Course(id, number, name, SyncMode(sync)) for id, number, name, sync in rows ]
@@ -107,7 +107,7 @@ class Database:
 
     def add_course(self, course):
         self.query("""
-                INSERT INTO courses
+                INSERT INTO courses (id, number, name, sync)
                 VALUES (:id, :num, :name, :sync);
             """, id=course.id, num=course.number, name=course.name, sync=int(course.sync),
                 expected_rows=0)
@@ -129,8 +129,8 @@ class Database:
 
         if full:
             rows = self.query("""
-                    SELECT files.id, courses.id, courses.name || '/' || file_paths.path, files.name,
-                            files.created
+                    SELECT files.id, courses.id,  courses.name || file_paths.path, files.name,
+                        files.created
                     FROM file_paths
                     INNER JOIN files ON file_paths.file = files.id
                     INNER JOIN courses ON file_paths.course = courses.id
@@ -149,22 +149,13 @@ class Database:
 
 
     def add_file(self, file):
-        def query_root_directory():
-            return self.query("""
-                    SELECT id FROM folders
-                    WHERE course = :course AND name = :name
-                """, course=file.course, name=file.path[0])
-
-        rows = query_root_directory()
-        if not rows:
-            self.query("""
-                    INSERT INTO folders (name, course)
-                    VALUES (:name, :course)
-                """, name=file.path[0], course=file.course, expected_rows=0)
-            rows = query_root_directory()
+        rows = self.query("""
+                SELECT root FROM courses
+                WHERE id = :course
+            """, course=file.course)
         parent, = rows[0]
 
-        for folder in file.path[1:]:
+        for folder in file.path:
             def query_subdirectory():
                 return self.query("""
                         SELECT id FROM folders
@@ -188,7 +179,7 @@ class Database:
 
     def list_file_parent_dirs(self, file):
         rows = self.query("""
-                SELECT courses.name || '/' || paths.path
+                SELECT courses.name || paths.path
                 FROM file_parent_paths AS paths
                 INNER JOIN courses ON paths.course = courses.id
                 WHERE paths.file = :file
