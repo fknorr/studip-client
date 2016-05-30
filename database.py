@@ -186,6 +186,15 @@ class Database:
             """, id=file.id, par=parent, name=file.name, creat=file.created, expected_rows=0)
 
 
+    def list_file_parent_dirs(self, file):
+        rows = self.query("""
+                SELECT courses.name || '/' || paths.path
+                FROM file_parent_paths AS paths
+                INNER JOIN courses ON paths.course = courses.id
+                WHERE paths.file = :file
+            """, file=file)
+        return [ path for path, in rows ]
+
     def commit(self):
         self.conn.commit()
 

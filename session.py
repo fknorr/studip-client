@@ -112,6 +112,7 @@ class Session:
 
     def download_files(self):
         first_file = True
+        modified_folders = set()
         for file in self.db.list_files(full=True, select_sync_metadata_only=False,
                 select_sync_no=False):
             dir_path = self.sync_dir + "/" + file.path
@@ -123,10 +124,26 @@ class Session:
                     print()
                     first_file = False
                 print("Downloading file {}...".format(rel_path))
+
                 url = self.studip_url("/studip/sendfile.php?force_download=1&type=0&" \
                         + urlencode({"file_id": file.id, "file_name": file.name }))
                 r = self.http.get(url)
+
                 with open(abs_path, "wb") as writer:
                     writer.write(r.content)
                     timestamp = time.mktime(file.created.timetuple())
                     os.utime(writer.fileno(), (timestamp, timestamp))
+
+                modified_folders.update(self.db.list_file_parent_dirs(file.id))
+
+        modified_folders = list(modified_folders)
+        modified_folders.sort(key=lambda f: len(f), reverse=True)
+        for folder in modified_folders:
+            path = self.sync_dir + "/" + folder
+            latest_ctime = 0
+            for file in os.listdir(path):
+                latest_ctime = max(latest_ctime, os.path.getmtime(path + "/" + file))
+            os.utime(path, (latest_ctime, latest_ctime))
+
+
+
