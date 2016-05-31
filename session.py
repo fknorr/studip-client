@@ -132,8 +132,8 @@ class Session:
                 with open(abs_path, "wb") as writer:
                     writer.write(r.content)
                     timestamp = time.mktime(file.created.timetuple())
-                    os.utime(writer.fileno(), (timestamp, timestamp))
 
+                os.utime(abs_path, (timestamp, timestamp))
                 modified_folders.update(self.db.list_file_parent_dirs(file.id))
 
         modified_folders = list(modified_folders)
