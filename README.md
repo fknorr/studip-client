@@ -24,6 +24,8 @@ $ studip <operation>
 
 ### Run from source directory
 
+Install all dependencies via
+
 ```
 $ pip3 install requests
 $ pip3 install appdirs
