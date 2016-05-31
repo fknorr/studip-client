@@ -4,34 +4,36 @@ Stud.IP Client
 _studip-client_ is a CLI application for synchronizing the directory tree from a Stud.IP
 university account to the local file system.
 
-It is currently only implemented for the University of Passau (https://uni-passau.de/studip).
+It is currently only implemented for the University of Passau (https://uni-passau.de/).
 
 Installation
 ------------
 
 Make sure you have at least Python 3.4 installed. There are two ways to use _studip-client_:
 
-1. Use `sudo ./setup.py`. This requires `setuptools` to be available. The setup script will
-    automatically install all prerequisites and add the `studip` executable to `$PATH`.
+### Install system-wide
 
-    Then you can simply do
+Use `sudo ./setup.py`. This requires `setuptools` to be available. The setup script will
+automatically install all prerequisites and add the `studip` executable to `$PATH`.
 
-    ```
-    $ studip <operation>
-    ```
+Then you can simply do
 
-2. Install all dependencies via
+```
+$ studip <operation>
+```
 
-    ```
-    $ pip3 install requests
-    $ pip3 install appdirs
-    ```
+### Run from source directory
 
-    or a similar command to your package manager. Afterwards, you can run
+```
+$ pip3 install requests
+$ pip3 install appdirs
+```
 
-    ```
-    $ ./studip.py <operation>
-    ```
+or a similar command to your package manager. Afterwards, you can run
+
+```
+$ ./studip.py <operation>
+```
 
 Usage
 -----
