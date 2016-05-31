@@ -23,8 +23,8 @@ Make sure you have at least Python 3.4 installed. There are two ways to use _stu
 2. Install all dependencies via
 
     ```
-    $ pip install requests
-    $ pip install appdirs
+    $ pip3 install requests
+    $ pip3 install appdirs
     ```
 
     or a similar command to your package manager. Afterwards, you can run
