@@ -3,7 +3,8 @@ from html.parser import HTMLParser
 from enum import IntEnum
 import urllib.parse as urlparse
 from datetime import datetime
-from database import Course, SyncMode, File
+
+from .database import Course, SyncMode, File
 
 
 def get_url_field(url, field):

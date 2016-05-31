@@ -1,3 +1,6 @@
 *.sw?
 __pycache__
 *.sublime-workspace
+/build
+/dist
+/*.egg-info

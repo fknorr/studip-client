@@ -4,10 +4,9 @@ from requests import session, RequestException, Timeout
 from datetime import date
 from urllib.parse import urlencode
 
-from parsers import *
-import database
-from database import Database
-from util import prompt_choice, ellipsize
+from .parsers import *
+from .database import Database, SyncMode
+from .util import prompt_choice, ellipsize
 
 
 class SessionError(Exception):
@@ -97,8 +96,8 @@ class Session:
         for course in new_courses:
             sync = prompt_choice("Synchronize \"{}\"? ([Y]es, [n]o, [m]etadata only)".format(
                     ellipsize(course.name, 50)), "ynm", default="y")
-            M = database.SyncMode
-            course.sync = { "y" : M.Full, "n" : M.NoSync, "m" : M.Metadata }[sync]
+            course.sync = { "y" : SyncMode.Full, "n" : SyncMode.NoSync, "m" : SyncMode.Metadata }[
+                    sync]
             self.db.add_course(course)
 
         sync_courses = self.db.list_courses(full=True, select_sync_no=False)
