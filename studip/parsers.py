@@ -259,5 +259,10 @@ class FileDetailsParser(HTMLParser):
         elif self.state == State.in_author_a:
             self.file.author = data
 
-def parse_file_details(html):
-    return create_parser_and_feed(FileDetailsParser, html).file
+def parse_file_details(course_id, html):
+    file = create_parser_and_feed(FileDetailsParser, html).file
+    file.course = course_id
+    if file.complete():
+        return file
+    else:
+        raise ParserError("FileDetails")

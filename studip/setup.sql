@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS files (
     id CHAR(32) NOT NULL,
     folder INTEGER NOT NULL,
     name VARCHAR(128) NOT NULL,
+    author VARCHAR(64),
+    description VARCHAR(256),
     created TIMESTAMP,
     PRIMARY KEY (id ASC),
     FOREIGN KEY (folder) REFERENCES folders(id)

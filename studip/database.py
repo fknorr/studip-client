@@ -17,12 +17,16 @@ class Course:
 
 
 class File:
-    def __init__(self, id, course=None, path=None, name=None, created=None):
+    def __init__(self, id, course=None, path=None, name=None, author=None, description=None,
+            created=None, has_copyright_notice=False):
         self.id = id
         self.course = course
         self.path = path
         self.name = name
+        self.author = author
+        self.description = description
         self.created = created
+        self.has_copyright_notice = has_copyright_notice
 
     def complete(self):
         return self.id and self.course and self.path and self.name and self.created
@@ -129,15 +133,15 @@ class Database:
 
         if full:
             rows = self.query("""
-                    SELECT files.id, courses.id,  courses.name || file_paths.path, files.name,
-                        files.created
+                    SELECT files.id, courses.id, courses.name || file_paths.path, files.name,
+                        files.author, files.description, files.created
                     FROM file_paths
                     INNER JOIN files ON file_paths.file = files.id
                     INNER JOIN courses ON file_paths.course = courses.id
                     WHERE courses.sync IN ({});
                 """.format(", ".join(sync_modes)))
-            return [ File(id, course, path, name, created) for id, course, path, name, created
-                    in rows ]
+            return [ File(id, course, path, name, author, description, created)
+                    for id, course, path, name, author, description, created in rows ]
 
         else:
             rows = self.query("""
@@ -172,9 +176,10 @@ class Database:
             parent, = rows[0]
 
         self.query("""
-                INSERT INTO files (id, folder, name, created)
-                VALUES (:id, :par, :name, :creat);
-            """, id=file.id, par=parent, name=file.name, creat=file.created, expected_rows=0)
+                INSERT INTO files (id, folder, name, author, description, created)
+                VALUES (:id, :par, :name, :auth, :descr, :creat);
+            """, id=file.id, par=parent, name=file.name, auth=file.author, descr=file.description,
+            creat=file.created, expected_rows=0)
 
 
     def list_file_parent_dirs(self, file):

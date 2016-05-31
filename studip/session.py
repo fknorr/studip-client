@@ -147,10 +147,9 @@ class Session:
                     raise_fetch_error("overview page", e)
 
                 try:
-                    file = parse_file_details(r.text)
+                    file = parse_file_details(course.id, r.text)
                 except ParserError:
                     raise SessionError("Unable to parse file details")
-                file.course = course.id
 
                 if file.complete():
                     self.db.add_file(file)
