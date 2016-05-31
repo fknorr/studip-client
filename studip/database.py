@@ -58,7 +58,7 @@ class Database:
         cursor = self.conn.cursor()
         if args:
             if not kwargs:
-                cursor.execute(sql, (*args))
+                cursor.execute(sql, tuple(*args))
             else:
                 raise ValueError("Pass either positional or keyword arguments")
         elif kwargs:
