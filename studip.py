@@ -8,10 +8,9 @@ from errno import ENOENT
 from configparser import ConfigParser
 import appdirs
 
-from parsers import *
 from database import Database
 from util import prompt_choice
-from session import Session
+from session import Session, SessionError, LoginError
 
 
 class ApplicationExit(BaseException):
@@ -74,6 +73,15 @@ class Application:
         self.db_file_name = dot_dir + "/cache.sqlite"
 
 
+    def save_config(self):
+        try:
+            with open(self.config_file_name, "w", encoding="utf-8") as file:
+                self.config.write(file)
+        except Exception as e:
+            self.print_io_error("Unable to write to", self.config_file_name, e)
+            raise ApplicationExit()
+
+
     def configure(self):
         self.config = ConfigParser()
         self.config["server"] = {
@@ -90,41 +98,49 @@ class Application:
                 self.print_io_error("Unable to read configuration from", config_file_name, e)
                 sys.stderr.write("Starting over with a fresh configuration\n")
 
-        user_config = self.config["user"]
-        if "user_name" in user_config:
-            self.user_name = user_config["user_name"]
-        else:
-            self.user_name = input("Stud.IP user name: ")
-
-        if "password" in user_config:
-            self.password = user_config["password"]
-        else:
-            self.password = getpass()
-
-        if "save_login" in user_config and user_config["save_login"][0] in "ynu":
-            save_login = user_config["save_login"][0]
-        else:
-            save_login = prompt_choice("Save login? ([Y]es, [n]o, [u]ser name only)", "ynu",
-                    default="y")
-            user_config["save_login"] = { "y" : "yes", "n" : "no", "u" : "user name only" }[
-                    save_login]
-
-        if save_login in "yu":
-            user_config["user_name"] = self.user_name
-        if save_login == "y":
-            user_config["password"] = self.password
-
-        try:
-            with open(self.config_file_name, "w", encoding="utf-8") as file:
-                self.config.write(file)
-        except Exception as e:
-            self.print_io_error("Unable to write to", self.config_file_name, e)
-            raise ApplicationExit()
-
 
     def open_session(self):
-        self.session = Session(self.config, self.database, self.user_name, self.password,
-                self.sync_dir)
+        user_config = self.config["user"]
+        login_changed = False
+
+        user_name = user_config["user_name"] if "user_name" in user_config else None
+        password = user_config["password"] if "password" in user_config else None
+
+        while True:
+            if user_name is None:
+                user_name = input("Stud.IP user name: ")
+                login_changed = True
+
+            if password is None:
+                password = getpass()
+                login_changed = True
+
+            try:
+                self.session = Session(self.config, self.database, user_name, password,
+                        self.sync_dir)
+            except SessionError as e:
+                sys.stderr.write(str(e) + "\n")
+                if not isinstance(e, LoginError):
+                    raise ApplicationExit()
+                user_name = password = None
+            else:
+                break
+
+        if login_changed:
+            if "save_login" in user_config and user_config["save_login"][0] in "ynu":
+                save_login = user_config["save_login"][0]
+            else:
+                save_login = prompt_choice("Save login? ([Y]es, [n]o, [u]ser name only)", "ynu",
+                        default="y")
+                user_config["save_login"] = { "y" : "yes", "n" : "no", "u" : "user name only" }[
+                        save_login]
+
+            if save_login in "yu":
+                user_config["user_name"] = user_name
+            if save_login == "y":
+                user_config["password"] = password
+
+            self.save_config()
 
 
     def open_database(self):
@@ -207,13 +223,19 @@ class Application:
         if op in [ "update", "download", "sync" ]:
             self.open_database()
             self.open_session()
-            if op == "update":
-                self.update_database()
-            elif op == "download":
-                self.download_files()
-            elif op == "sync":
-                self.update_database()
-                self.download_files()
+
+            try:
+                if op == "update":
+                    self.update_database()
+                elif op == "download":
+                    self.download_files()
+                elif op == "sync":
+                    self.update_database()
+                    self.download_files()
+            except SessionError as e:
+                sys.stderr.write(str(e) + "\n")
+                raise ApplicationExit()
+
         elif op == "clear-cache":
             self.clear_cache()
 

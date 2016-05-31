@@ -1,13 +1,24 @@
-import requests
 import os
 import time
+from requests import session, RequestException, Timeout
+from datetime import date
+from urllib.parse import urlencode
 
 from parsers import *
 import database
 from database import Database
 from util import prompt_choice, ellipsize
-from datetime import date
-from urllib.parse import urlencode
+
+
+class SessionError(Exception):
+    pass
+
+class LoginError(SessionError):
+    pass
+
+
+def raise_fetch_error(page, e):
+    raise SessionError("Unable to fetch {}: {}".format(page, str(e)))
 
 
 class Session:
@@ -24,25 +35,52 @@ class Session:
         self.sync_dir = sync_dir
 
         self.http = requests.session()
-        self.http.get(self.studip_url("/studip/index.php?again=yes&sso=shib"))
 
-        r = self.http.post(self.sso_url("/idp/Authn/UserPassword"), data = {
-            "j_username": user_name,
-            "j_password": password,
-            "uApprove.consent-revocation": ""
-        })
+        try:
+            self.http.get(self.studip_url("/studip/index.php?again=yes&sso=shib"))
+        except RequestException as e:
+            raise_fetch_error("login page", e)
 
-        form_data = parse_saml_form(r.text)
-        r = self.http.post(self.studip_url("/Shibboleth.sso/SAML2/POST"), form_data)
+        try:
+            r = self.http.post(self.sso_url("/idp/Authn/UserPassword"), data = {
+                "j_username": user_name,
+                "j_password": password,
+                "uApprove.consent-revocation": ""
+            })
+        except RequestException as e:
+            raise_fetch_error("login confirmation page", e)
+
+        try:
+            form_data = parse_saml_form(r.text)
+        except ParserError:
+            raise LoginError("Login failed")
+
+        try:
+            r = self.http.post(self.studip_url("/Shibboleth.sso/SAML2/POST"), form_data)
+        except RequestException as e:
+            raise_fetch_error("login page", e)
+
         self.overview_page = r.text
 
 
     def update_metadata(self):
-        if parse_selected_semester(self.overview_page) != "current":
-            url = self.studip_url("/studip/dispatch.php/my_courses/set_semester")
-            self.overview_page = self.http.post(url, data={ "sem_select": "current" }).text
+        try:
+            semester = parse_selected_semester(self.overview_page)
+        except ParserError:
+            raise SessionError("Unable to parse overview page")
 
-        remote_courses = parse_course_list(self.overview_page)
+        if semester != "current":
+            url = self.studip_url("/studip/dispatch.php/my_courses/set_semester")
+            try:
+                self.overview_page = self.http.post(url, data={ "sem_select": "current" }).text
+            except RequestException as e:
+                raise_fetch_error("overview page", e)
+
+        try:
+            remote_courses = parse_course_list(self.overview_page)
+        except ParserError:
+            raise SessionError("Unable to parse course list")
+
         remote_course_ids = [course.id for course in remote_courses]
 
         db_course_ids = self.db.list_courses()
@@ -74,11 +112,16 @@ class Session:
                 self.http.get(course_url, timeout=(None, 0))
             except (KeyboardInterrupt, SystemExit):
                 raise
-            except requests.Timeout:
+            except Timeout:
                 pass
+            except RequestException as e:
+                raise SessionError("Unable to set course: {}".format(str(e)))
 
             r = self.http.get(folder_url)
-            file_list = parse_file_list(r.text)
+            try:
+                file_list = parse_file_list(r.text)
+            except ParserError:
+                raise SessionError("Unable to parse file list")
 
             if last_course_synced:
                 print()
@@ -99,8 +142,15 @@ class Session:
                         end="", flush=True)
 
                 open_url = folder_url + "&open=" + file_id
-                r = self.http.get(open_url)
-                file = parse_file_details(r.text)
+                try:
+                    r = self.http.get(open_url)
+                except RequestException as e:
+                    raise_fetch_error("overview page", e)
+
+                try:
+                    file = parse_file_details(r.text)
+                except ParserError:
+                    raise SessionError("Unable to parse file details")
                 file.course = course.id
 
                 if file.complete():
@@ -127,7 +177,10 @@ class Session:
 
                 url = self.studip_url("/studip/sendfile.php?force_download=1&type=0&" \
                         + urlencode({"file_id": file.id, "file_name": file.name }))
-                r = self.http.get(url)
+                try:
+                    r = self.http.get(url)
+                except RequestException as e:
+                    raise SessionError("Unable to download file {}: {}".format(file.name, str(e)))
 
                 with open(abs_path, "wb") as writer:
                     writer.write(r.content)
