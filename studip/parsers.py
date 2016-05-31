@@ -222,6 +222,10 @@ class FileDetailsParser(HTMLParser):
                     elif "sendfile.php" in href and not "zip=" in href:
                         self.file.id = get_url_field(href, "file_id")
                         self.file.name = get_url_field(href, "file_name")
+            if tag == "div":
+                attrs = dict(attrs)
+                if "class" in attrs and "messagebox" in attrs["class"]:
+                    self.file.copyrighted = True
         elif self.state == State.after_header_span and tag == "td":
             self.state = State.in_origin_td
         elif self.state == State.in_origin_td and tag == "a":

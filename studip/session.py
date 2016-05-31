@@ -161,6 +161,8 @@ class Session:
     def download_files(self):
         first_file = True
         modified_folders = set()
+        copyrighted_files = []
+
         for file in self.db.list_files(full=True, select_sync_metadata_only=False,
                 select_sync_no=False):
             dir_path = self.sync_dir + "/" + file.path
@@ -184,6 +186,9 @@ class Session:
                     writer.write(r.content)
                     timestamp = time.mktime(file.created.timetuple())
 
+                if file.copyrighted:
+                    copyrighted_files.append(rel_path)
+
                 os.utime(abs_path, (timestamp, timestamp))
                 modified_folders.update(self.db.list_file_parent_dirs(file.id))
 
@@ -200,3 +205,12 @@ class Session:
         for folder in modified_folders:
             update_directory_mtime(self.sync_dir + "/" + folder)
         update_directory_mtime(self.sync_dir)
+
+        if copyrighted_files:
+            print("\n" + "-"*80)
+            print("The following files have special copyright notices:\n")
+            for file in copyrighted_files:
+                print("  -", file)
+            print("\nPlease make sure you looked up, read and understood the terms and conditions"
+                    " of these files before proceeding to use them.")
+            print("-"*80 + "\n")

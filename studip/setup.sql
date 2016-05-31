@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS files (
     author VARCHAR(64),
     description VARCHAR(256),
     created TIMESTAMP,
+    copyrighted BOOLEAN NOT NULL DEFAULT 0,
     PRIMARY KEY (id ASC),
     FOREIGN KEY (folder) REFERENCES folders(id)
 );
