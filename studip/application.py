@@ -18,9 +18,12 @@ class ApplicationExit(BaseException):
 
 
 class Application:
-    def print_io_error(self, str, source, e):
-        sys.stderr.write("Error: {} {}: {}\n".format(str, source,
-                e.strerror if e.strerror else type(e).__name__))
+    def print_io_error(self, msg, source, e):
+        try:
+            strerror = e.strerror
+        except AttributeError:
+            strerror = str(e)
+        sys.stderr.write("Error: {} {}: {}\n".format(msg, source, strerror))
 
 
     def create_path(self, dir):
@@ -50,7 +53,7 @@ class Application:
                 print("Using last sync directory {} ...".format(self.sync_dir))
             else:
                 default_dir = os.path.expanduser("~/StudIP")
-                self.sync_dir = os.path.expanduser(input("Sync directory [{}]: ".format(#
+                self.sync_dir = os.path.expanduser(input("Sync directory [{}]: ".format(
                         default_dir)))
                 if not self.sync_dir:
                     self.sync_dir = default_dir

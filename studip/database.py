@@ -48,14 +48,32 @@ class QueryError(Exception):
 
 
 class Database:
+    schema_version = 2
+
     def __init__(self, file_name):
-        self.conn = sqlite3.connect(file_name, detect_types=sqlite3.PARSE_DECLTYPES)
+        def connect(self):
+            self.conn = sqlite3.connect(file_name, detect_types=sqlite3.PARSE_DECLTYPES)
 
-        script_dir = os.path.dirname(os.path.realpath(__file__))
-        with open(script_dir + "/setup.sql", "r") as file:
-            init_script = file.read()
+        # Try using the existing db, if the version differs from the internal schema version,
+        # delete the database and start over
+        connect(self)
+        db_version, = self.query("PRAGMA user_version", expected_rows=1)[0]
+        if db_version != self.schema_version:
+            if db_version != 0:
+                self.conn.close()
+                print("Clearing cache: DB file version out of date")
+                os.remove(file_name)
+                connect(self)
 
-        self.query_script(init_script)
+            # At this point, the database is definitely empty.
+            self.query("PRAGMA user_version = " + str(self.schema_version), expected_rows=0)
+
+            # Create all tables, views and triggers
+            script_dir = os.path.dirname(os.path.realpath(__file__))
+            with open(script_dir + "/setup.sql", "r") as file:
+                init_script = file.read()
+
+            self.query_script(init_script)
 
 
     def query(self, sql, expected_rows=-1, *args, **kwargs):
