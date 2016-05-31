@@ -191,12 +191,14 @@ class Session:
 
         modified_folders = list(modified_folders)
         modified_folders.sort(key=lambda f: len(f), reverse=True)
-        for folder in modified_folders:
-            path = self.sync_dir + "/" + folder
+
+        def update_directory_mtime(path):
             latest_ctime = 0
             for file in os.listdir(path):
-                latest_ctime = max(latest_ctime, os.path.getmtime(path + "/" + file))
+                if not file.startswith("."):
+                    latest_ctime = max(latest_ctime, os.path.getmtime(path + "/" + file))
             os.utime(path, (latest_ctime, latest_ctime))
 
-
-
+        for folder in modified_folders:
+            update_directory_mtime(self.sync_dir + "/" + folder)
+        update_directory_mtime(self.sync_dir)
