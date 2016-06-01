@@ -197,7 +197,8 @@ class Session:
                     copyrighted_files.append(rel_path)
 
                 os.utime(abs_path, (timestamp, timestamp))
-                modified_folders.update(self.db.list_file_parent_dirs(file.id))
+                parent_dirs = (course_dir + par for par in self.db.list_file_parent_dirs(file.id))
+                modified_folders.update(parent_dirs)
 
         modified_folders = list(modified_folders)
         modified_folders.sort(key=lambda f: len(f), reverse=True)

@@ -202,9 +202,8 @@ class Database:
 
     def list_file_parent_dirs(self, file):
         rows = self.query("""
-                SELECT courses.name || paths.path
+                SELECT paths.path
                 FROM file_parent_paths AS paths
-                INNER JOIN courses ON paths.course = courses.id
                 WHERE paths.file = :file
             """, file=file)
         return [ path for path, in rows ]
