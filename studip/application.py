@@ -45,24 +45,31 @@ class Application:
         except Exception:
             pass
 
+        skipped_history = 0
         if "sync_dir" in self.command_line:
             sync_dir = self.command_line["sync_dir"]
         else:
-            if history:
+            if history and os.path.isdir(history[0]):
                 sync_dir = history[0]
                 print("Using last sync directory {} ...".format(sync_dir))
             else:
+                skipped_history = 1
                 default_dir = "~/StudIP"
+                for entry in history[1:]:
+                    skipped_history += 1
+                    if os.path.isdir(entry):
+                        default_dir = entry
+
                 sync_dir = input("Sync directory [{}]: ".format(default_dir))
                 if not sync_dir:
                     sync_dir = default_dir
 
         sync_dir = os.path.abspath(os.path.expanduser(sync_dir))
-
+        history = history[skipped_history:]
         while sync_dir in history:
             history.remove(sync_dir)
-        history.insert(0, sync_dir)
 
+        history.insert(0, sync_dir)
         self.sync_dir = sync_dir
 
         try:
