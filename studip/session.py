@@ -165,10 +165,17 @@ class Session:
 
         for file in self.db.list_files(full=True, select_sync_metadata_only=False,
                 select_sync_no=False):
-            dir_path = self.sync_dir + "/" + file.path
+
+            # Replace regular '/' by 'DIVISION SLASH' (U+2215) to create a valid directory name
+            course_dir = file.course_name.replace("/", "\u2215")
+
+            dir = course_dir + file.path
+            dir_path = os.path.join(self.sync_dir, dir)
             os.makedirs(dir_path, exist_ok=True)
-            rel_path = file.path + "/" + file.name
+
+            rel_path = dir + "/" + file.name
             abs_path = dir_path + "/" + file.name
+
             if not os.path.isfile(abs_path):
                 if first_file:
                     print()

@@ -17,10 +17,11 @@ class Course:
 
 
 class File:
-    def __init__(self, id, course=None, path=None, name=None, author=None, description=None,
-            created=None, copyrighted=False):
+    def __init__(self, id, course=None, course_name=None, path=None, name=None, author=None,
+            description=None, created=None, copyrighted=False):
         self.id = id
         self.course = course
+        self.course_name = course_name
         self.path = path
         self.name = name
         self.author = author
@@ -151,7 +152,7 @@ class Database:
 
         if full:
             rows = self.query("""
-                    SELECT files.id, courses.id, courses.name || file_paths.path, files.name,
+                    SELECT files.id, courses.id, courses.name, file_paths.path, files.name,
                         files.author, files.description, files.created, files.copyrighted
                     FROM file_paths
                     INNER JOIN files ON file_paths.file = files.id
