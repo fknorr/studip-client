@@ -46,21 +46,24 @@ class Application:
             pass
 
         if "sync_dir" in self.command_line:
-            self.sync_dir = self.command_line["sync_dir"]
+            sync_dir = self.command_line["sync_dir"]
         else:
             if history:
-                self.sync_dir = history[0]
-                print("Using last sync directory {} ...".format(self.sync_dir))
+                sync_dir = history[0]
+                print("Using last sync directory {} ...".format(sync_dir))
             else:
-                default_dir = os.path.expanduser("~/StudIP")
-                self.sync_dir = os.path.expanduser(input("Sync directory [{}]: ".format(
-                        default_dir)))
-                if not self.sync_dir:
-                    self.sync_dir = default_dir
+                default_dir = "~/StudIP"
+                sync_dir = input("Sync directory [{}]: ".format(default_dir))
+                if not sync_dir:
+                    sync_dir = default_dir
 
-        while self.sync_dir in history:
-            history.remove(self.sync_dir)
-        history.insert(0, self.sync_dir)
+        sync_dir = os.path.abspath(os.path.expanduser(sync_dir))
+
+        while sync_dir in history:
+            history.remove(sync_dir)
+        history.insert(0, sync_dir)
+
+        self.sync_dir = sync_dir
 
         try:
             with open(history_file_name, "w", encoding="utf-8") as file:
