@@ -7,9 +7,10 @@ from getpass import getpass
 from errno import ENOENT
 from configparser import ConfigParser
 import appdirs
+import base64, random, string
 
 from .database import Database
-from .util import prompt_choice
+from .util import prompt_choice, xor_crypt
 from .session import Session, SessionError, LoginError
 
 
@@ -35,9 +36,9 @@ class Application:
 
 
     def setup_sync_dir(self):
-        cache_dir = appdirs.user_cache_dir("studip", "fknorr")
-        self.create_path(cache_dir)
-        history_file_name = appdirs.user_cache_dir("studip", "fknorr") + "/history"
+        self.cache_dir = appdirs.user_cache_dir("studip", "fknorr")
+        self.create_path(self.cache_dir)
+        history_file_name = os.path.join(appdirs.user_cache_dir("studip", "fknorr") + "history")
         history = []
         try:
             with open(history_file_name, "r", encoding="utf-8") as file:
@@ -79,11 +80,11 @@ class Application:
             self.print_io_error("Unable to write to", history_file_name, e)
             raise ApplicationExit()
 
-        dot_dir = self.sync_dir + "/.studip"
+        dot_dir = os.path.join(self.sync_dir, ".studip")
         self.create_path(dot_dir)
 
-        self.config_file_name = dot_dir + "/studip.conf"
-        self.db_file_name = dot_dir + "/cache.sqlite"
+        self.config_file_name = os.path.join(dot_dir, "studip.conf")
+        self.db_file_name = os.path.join(dot_dir, "cache.sqlite")
 
 
     def save_config(self):
@@ -116,8 +117,31 @@ class Application:
         user_config = self.config["user"]
         login_changed = False
 
-        user_name = user_config["user_name"] if "user_name" in user_config else None
-        password = user_config["password"] if "password" in user_config else None
+        user_secret_file_name = os.path.join(self.cache_dir, "secret")
+        try:
+            try:
+                with open(user_secret_file_name, "rb") as file:
+                    user_secret = file.read().rstrip(b"\n")
+            except Exception as e:
+                if isinstance(e, IOError) and e.errno == ENOENT:
+                    domain = string.ascii_lowercase + string.ascii_uppercase + string.digits
+                    user_secret = ''.join(random.SystemRandom().choice(domain)
+                            for _ in range(50)).encode("ascii")
+                    with open(user_secret_file_name, "wb") as file:
+                        file.write(user_secret + b"\n")
+                else:
+                    raise
+        except Exception as e:
+            self.print_io_error("Unable to access", user_secret_file_name, e)
+            raise ApplicationExit()
+
+        password = None
+        user_name = None
+        if "user_name" in user_config:
+            user_name = user_config["user_name"]
+        if "password" in user_config:
+            password = xor_crypt(user_secret,
+                    base64.b64decode(user_config["password"].encode("ascii"))).decode("utf-8")
 
         while True:
             if user_name is None:
@@ -151,7 +175,9 @@ class Application:
             if save_login in "yu":
                 user_config["user_name"] = user_name
             if save_login == "y":
-                user_config["password"] = password
+                print(type(password))
+                user_config["password"] = base64.b64encode(xor_crypt(user_secret,
+                        password.encode("utf-8"))).decode("ascii")
 
             self.save_config()
 

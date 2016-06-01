@@ -5,6 +5,7 @@ def prompt_choice(prompt, options, default=None):
         choice = input(prompt + ": ").lower()
     return choice[0] if len(choice) > 0 else default
 
+
 def ellipsize(string, length):
     if len(string) <= length:
         return string
@@ -12,3 +13,7 @@ def ellipsize(string, length):
         left = length // 2 - 2
         return string[:left] + " .. " + string[len(string)-left:]
 
+
+def xor_crypt(key, text):
+    while len(key) < len(text): key += key
+    return bytearray(a^b for a, b in zip(text, key))
