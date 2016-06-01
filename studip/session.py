@@ -1,11 +1,10 @@
-import os
-import time
+import os, time
+
 from requests import session, RequestException, Timeout
-from datetime import date
 from urllib.parse import urlencode
 
 from .parsers import *
-from .database import Database, SyncMode
+from .database import SyncMode
 from .util import prompt_choice, ellipsize
 
 
@@ -219,6 +218,6 @@ class Session:
             print("The following files have special copyright notices:\n")
             for file in copyrighted_files:
                 print("  -", file)
-            print("\nPlease make sure you looked up, read and understood the terms and conditions"
-                    " of these files before proceeding to use them.")
+            print("\nPlease make sure you have looked up, read and understood the terms and"
+                    " conditions of these files before proceeding to use them.")
             print("-"*80 + "\n")

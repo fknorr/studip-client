@@ -1,16 +1,12 @@
-import requests
-from html.parser import HTMLParser
-from enum import IntEnum
-import urllib.parse as urlparse
-import os, sys
+import os, sys, appdirs
+
 from getpass import getpass
 from errno import ENOENT
 from configparser import ConfigParser
-import appdirs
-import base64, random, string
+from base64 import b64encode, b64decode
 
 from .database import Database
-from .util import prompt_choice, xor_crypt
+from .util import prompt_choice, encrypt_password, decrypt_password
 from .session import Session, SessionError, LoginError
 
 
@@ -121,14 +117,16 @@ class Application:
         try:
             try:
                 with open(user_secret_file_name, "rb") as file:
-                    user_secret = file.read().rstrip(b"\n")
+                    user_secret = b64decode(file.read())
             except Exception as e:
                 if isinstance(e, IOError) and e.errno == ENOENT:
-                    domain = string.ascii_lowercase + string.ascii_uppercase + string.digits
-                    user_secret = ''.join(random.SystemRandom().choice(domain)
-                            for _ in range(50)).encode("ascii")
+                    user_secret = os.urandom(50)
                     with open(user_secret_file_name, "wb") as file:
-                        file.write(user_secret + b"\n")
+                        file.write(b64encode(user_secret) + b"\n")
+
+                    # Any stored password is useless without a secret file
+                    if "password" in user_config:
+                        del user_config["password"]
                 else:
                     raise
         except Exception as e:
@@ -140,8 +138,7 @@ class Application:
         if "user_name" in user_config:
             user_name = user_config["user_name"]
         if "password" in user_config:
-            password = xor_crypt(user_secret,
-                    base64.b64decode(user_config["password"].encode("ascii"))).decode("utf-8")
+            password = decrypt_password(user_secret, user_config["password"])
 
         while True:
             if user_name is None:
@@ -156,7 +153,7 @@ class Application:
                 self.session = Session(self.config, self.database, user_name, password,
                         self.sync_dir)
             except SessionError as e:
-                sys.stderr.write(str(e) + "\n")
+                sys.stderr.write("\n{}\n".format(e))
                 if not isinstance(e, LoginError):
                     raise ApplicationExit()
                 user_name = password = None
@@ -175,9 +172,7 @@ class Application:
             if save_login in "yu":
                 user_config["user_name"] = user_name
             if save_login == "y":
-                print(type(password))
-                user_config["password"] = base64.b64encode(xor_crypt(user_secret,
-                        password.encode("utf-8"))).decode("ascii")
+                user_config["password"] = encrypt_password(user_secret, password)
 
             self.save_config()
 
@@ -272,7 +267,7 @@ class Application:
                     self.update_database()
                     self.download_files()
             except SessionError as e:
-                sys.stderr.write(str(e) + "\n")
+                sys.stderr.write("\n{}\n".format(e))
                 raise ApplicationExit()
 
         elif op == "clear-cache":
@@ -284,6 +279,9 @@ def main():
         app = Application()
         app.run()
     except ApplicationExit:
+        sys.exit(1)
+    except EOFError:
+        sys.stderr.write("\nError: Unexpected end of input\n")
         sys.exit(1)
     except KeyboardInterrupt:
         sys.exit(130) # Standard UNIX exit code for SIGINT

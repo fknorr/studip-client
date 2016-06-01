@@ -1,6 +1,5 @@
 import sqlite3, os
 from enum import IntEnum
-from collections import namedtuple
 
 
 SyncMode = IntEnum("SyncMode", "NoSync Metadata Full")
