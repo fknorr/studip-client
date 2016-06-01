@@ -13,7 +13,13 @@ Make sure you have at least Python 3.4 installed. There are two ways to use _stu
 
 ### Install system-wide
 
-Use `sudo ./setup.py`. This requires `setuptools` to be available. The setup script will
+To install the application for all users, run
+
+```
+sudo ./setup.py install
+```
+
+This requires `setuptools` to be available. The setup script will
 automatically install all prerequisites and add the `studip` executable to `$PATH`.
 
 Then you can simply do
@@ -24,7 +30,7 @@ $ studip <operation>
 
 ### Run from source directory
 
-Install all dependencies via
+To run _studip-client_ locally, install all dependencies via
 
 ```
 $ pip3 install requests
@@ -65,3 +71,12 @@ The most important operations are
 If no directory is given, the most recently used one is assumed, if _studip-client_ has not been
 run before, the directory is read from the standard input.
 
+Security
+--------
+
+_studip-client_ works by crawling the Stud.IP web interface and will therefore ask for your
+user name and password. The credentials are stored locally in `<sync-dir>/studip.conf` and sent
+to the university server via HTTPS. They will not be copied or distributed in any other way.
+
+If you're interested in verifying this claim manually, the relevant source code can be found in
+`studip/application.py`, `Application.open_session()`.
