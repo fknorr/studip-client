@@ -31,6 +31,7 @@ class Session:
     def __init__(self, config, db, user_name, password, sync_dir):
         self.db = db
         self.server_config = config["server"]
+        self.fs_config = config["filesystem"]
         self.sync_dir = sync_dir
 
         self.http = requests.session()
@@ -163,7 +164,7 @@ class Session:
         modified_folders = set()
         copyrighted_files = []
 
-        path_format = "{course} ({type})/{path}/{name}.{ext}"
+        path_format = self.fs_config["path_format"]
 
         try:
             for file in self.db.list_files(full=True, select_sync_metadata_only=False,
