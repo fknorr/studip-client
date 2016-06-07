@@ -71,6 +71,35 @@ The most important operations are
 If no directory is given, the most recently used one is assumed, if _studip-client_ has not been
 run before, the directory is read from the standard input.
 
+Configuration
+-------------
+
+At the moment, the only way to modify _studip-client_'s configuration is by editing
+`<sync-dir>/.studip/studip.conf`. It is divided into three sections:
+
+- `server`: The studip server's base URLs. The only web interface the client has been tested
+  against is `uni-passau.de`, so changing these settings to connect to other servers will probably
+  not work correctly.
+- `filesystem`: Specifies how files will be saved to disk.
+    - `path_format`: A string specifying how each file's path will be built from its metadata. The
+      following placeholders are available:
+      ```
+      {course-id}       Course hash-id
+      {course}          Course name
+      {type}            Course type (e.g. "Lecture")
+      {path}            Path of the file's containing directory
+      {short-path}      Like {path}, but with "Allgemeiner Dateiordner" removed
+      {id}              File hash-id
+      {name}            Original file name, without extension
+      {ext}             File extension (e.g. "pdf")
+      {description}     Full file description
+      {descr-no-ext}    Like {description}, but with the file extension stripped (if any)
+      {author}          File author's name
+      {time}            Time of creation
+      ```
+- `user`: Login credentials. The password will be encrypted with `~/.cache/studip/secret` as the
+  key, which means it cannot be edited directly.
+
 Security
 --------
 
