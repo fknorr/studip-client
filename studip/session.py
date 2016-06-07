@@ -65,11 +65,13 @@ class Session:
 
     def update_metadata(self):
         try:
-            semester = parse_selected_semester(self.overview_page)
+            semester_list = parse_semester_list(self.overview_page)
         except ParserError:
             raise SessionError("Unable to parse overview page")
 
-        if semester != "current":
+        self.db.update_semester_list(semester_list.semesters)
+
+        if semester_list.selected != "current":
             url = self.studip_url("/studip/dispatch.php/my_courses/set_semester")
             try:
                 self.overview_page = self.http.post(url, data={ "sem_select": "current" }).text
@@ -186,6 +188,7 @@ class Session:
                     short_path = short_path[1:]
 
                 tokens = {
+                    "semester": file.course_semester,
                     "course-id": file.course,
                     "course": unslash(file.course_name),
                     "type": unslash(file.course_type),

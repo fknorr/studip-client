@@ -85,6 +85,7 @@ At the moment, the only way to modify _studip-client_'s configuration is by edit
       following placeholders are available:
 
       ```
+      {semester}        Course semester
       {course-id}       Course hash-id
       {course}          Course name
       {type}            Course type (e.g. "Lecture")
@@ -98,7 +99,7 @@ At the moment, the only way to modify _studip-client_'s configuration is by edit
       {author}          File author's name
       {time}            Time of creation
       ```
-      
+
 - `user`: Login credentials. The password will be encrypted with `~/.cache/studip/secret` as the
   key, which means it cannot be edited directly.
 

@@ -4,23 +4,37 @@ from enum import IntEnum
 
 SyncMode = IntEnum("SyncMode", "NoSync Metadata Full")
 
-class Course:
-    def __init__(self, id, number=None, name=None, type=None, sync=None):
+
+class Semester:
+    def __init__(self, id, name=None, order=None):
         self.id = id
+        self.name = name
+        self.order = order
+
+    def complete(self):
+        return self.id and self.name and self.order
+
+
+class Course:
+    def __init__(self, id, semester=None, number=None, name=None, type=None, sync=None):
+        self.id = id
+        self.semester = semester
         self.number = number
         self.name = name
         self.type = type
         self.sync = sync
 
     def complete(self):
-        return self.id and self.number and self.name and self.type and self.sync
+        return self.id and self.semester and self.number and self.name and self.type and self.sync
 
 
 class File:
-    def __init__(self, id, course=None, course_name=None, course_type=None, path=None, name=None,
-            extension=None, author=None, description=None, created=None, copyrighted=False):
+    def __init__(self, id, course=None, course_semester=None, course_name=None, course_type=None,
+            path=None, name=None, extension=None, author=None, description=None, created=None,
+            copyrighted=False):
         self.id = id
         self.course = course
+        self.course_semester = course_semester
         self.course_name = course_name
         self.course_type = course_type
         self.path = path
@@ -51,7 +65,7 @@ class QueryError(Exception):
 
 
 class Database:
-    schema_version = 4
+    schema_version = 5
 
     def __init__(self, file_name):
         def connect(self):
@@ -98,9 +112,18 @@ class Database:
                         expected_rows, len(rows)))
             return rows
 
-
     def query_script(self, sql):
         self.conn.cursor().executescript(sql)
+
+    def query_multiple(self, sql, args):
+        self.conn.cursor().executemany(sql, args)
+
+
+    def update_semester_list(self, semesters):
+        self.query_multiple("""
+                INSERT OR REPLACE INTO semesters (id, name, ord)
+                VALUES (:id, :name, :order)
+            """, (s.__dict__ for s in semesters))
 
 
     def list_courses(self, full=False, select_sync_yes=True, select_sync_metadata_only=True,
@@ -109,33 +132,40 @@ class Database:
                 (select_sync_metadata_only, SyncMode.Metadata), (select_sync_no, SyncMode.NoSync) ]
                 if enable ]
 
-        rows = self.query("""
-                SELECT {} FROM courses
-                WHERE sync IN ({});
-            """.format("id, number, name, type, sync" if full else "id", ", ".join(sync_modes)))
-
         if full:
-            return [ Course(i, n, a, t, SyncMode(sync)) for i, n, a, t, sync in rows ]
+            rows = self.query("""
+                SELECT c.id, s.name, c.number, c.name, c.type, c.sync FROM courses AS c
+                INNER JOIN semesters AS s ON s.id = c.semester
+                WHERE c.sync IN ({});
+            """.format(", ".join(sync_modes)))
+            return [ Course(i, s, n, a, t, SyncMode(sync)) for i, s, n, a, t, sync in rows ]
         else:
+            rows = self.query("""
+                SELECT id FROM courses
+                WHERE sync IN ({});
+            """.format(", ".join(sync_modes)))
             return [ id for (id,) in rows ]
 
 
     def get_course_details(self, course_id):
         rows = self.query("""
-                SELECT number, name, sync
-                FROM courses
-                WHERE courses.id = :id;
+                SELECT s.name, c.number, c.name, c.sync
+                FROM courses AS c
+                INNER JOIN semesters AS s ON s.id = c.semester
+                WHERE c.id = :id;
             """, id=course_id, expected_rows=1)
-        number, name, sync = rows[0]
-        return Course(id=course_id, number=number, name=name, sync=SyncMode(sync))
+        semester, number, name, sync = rows[0]
+        return Course(id=course_id, semester=semester, number=number, name=name,
+                sync=SyncMode(sync))
 
 
     def add_course(self, course):
         self.query("""
-                INSERT INTO courses (id, number, name, type, sync)
-                VALUES (:id, :num, :name, :type, :sync);
-            """, id=course.id, num=course.number, name=course.name, type=course.type,
-                sync=int(course.sync), expected_rows=0)
+                INSERT INTO courses (id, semester, number, name, type, sync)
+                VALUES (:id, (SELECT id FROM semesters WHERE name = :sem), :num, :name,
+                    :type, :sync);
+            """, id=course.id, sem=course.semester, num=course.number, name=course.name,
+                type=course.type, sync=int(course.sync), expected_rows=0)
 
 
     def delete_course(self, course):
@@ -154,14 +184,14 @@ class Database:
 
         if full:
             rows = self.query("""
-                    SELECT id, course_id, course_name, course_type, path, name, extension, author,
-                        description, created, copyrighted
+                    SELECT id, course_id, course_semester, course_name, course_type, path, name,
+                        extension, author, description, created, copyrighted
                     FROM file_details
                     WHERE sync IN ({});
                 """.format(", ".join(sync_modes)))
             # Path is encoded as the string representation of a python list
-            return [ File(i, j, c, o, ast.literal_eval(path), n, e, a, d, t, y)
-                    for i, j, c, o, path, n, e, a, d, t, y in rows ]
+            return [ File(i, j, s, c, o, ast.literal_eval(path), n, e, a, d, t, y)
+                    for i, j, s, c, o, path, n, e, a, d, t, y in rows ]
 
         else:
             rows = self.query("""

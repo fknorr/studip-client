@@ -4,7 +4,8 @@ from enum import IntEnum
 import urllib.parse as urlparse
 from datetime import datetime
 
-from .database import Course, SyncMode, File
+from .database import Semester, Course, SyncMode, File
+from .util import compact
 
 
 def get_url_field(url, field):
@@ -61,28 +62,62 @@ def parse_saml_form(html):
         raise ParserError("SAMLForm")
 
 
-class SelectedSemesterParser(HTMLParser):
+class SemesterListParser(HTMLParser):
+    State = IntEnum("State", "outside select optgroup option")
+
     def __init__(self):
         super().__init__()
-        self.semester = None
+        self.state = SemesterListParser.State.outside
+        self.semesters = []
+        self.selected = None
+        self.current_id = None
+        self.current_name = ""
 
     def handle_starttag(self, tag, attrs):
+        State = SemesterListParser.State
+        if tag == "select":
+            attrs = dict(attrs)
+            if self.state == State.outside and "name" in attrs and attrs["name"] == "sem_select":
+                self.state = State.select
+        if tag == "optgroup" and self.state == State.select:
+            self.state = State.optgroup
         if tag == "option":
             attrs = dict(attrs)
-            if "selected" in attrs and "value" in attrs:
-                self.semester = attrs["value"]
-                raise StopParsing()
+            if self.state == State.select and "selected" in attrs and "value" in attrs:
+                self.selected = attrs["value"]
+            elif self.state == State.optgroup and "value" in attrs:
+                self.current_id = attrs["value"]
+                self.state = State.option
 
-def parse_selected_semester(html):
-    parser = create_parser_and_feed(SelectedSemesterParser, html)
-    if parser.semester:
-        return parser.semester
+    def handle_endtag(self, tag):
+        State = SemesterListParser.State
+        if tag == "select" and self.state == State.select:
+            raise StopParsing()
+        if tag == "optgroup" and self.state == State.optgroup:
+            self.state = State.select
+        if tag == "option" and self.state == State.option:
+            self.state = State.optgroup
+            self.semesters.append(Semester(self.current_id, name=compact(self.current_name)))
+            self.current_name = ""
+
+    def handle_data(self, data):
+        State = SemesterListParser.State
+        if self.state == State.option:
+            self.current_name += data
+
+
+def parse_semester_list(html):
+    parser = create_parser_and_feed(SemesterListParser, html)
+    if parser.selected:
+        for i, sem in enumerate(parser.semesters):
+            sem.order = len(parser.semesters) - 1 - i
+        return parser
     else:
-        raise ParserError("SelectedSemester")
+        raise ParserError("SemesterList")
 
 
 class CourseListParser(HTMLParser):
-    State = IntEnum("State", "before_sem before_thead_end before_tr "
+    State = IntEnum("State", "before_sem before_thead_end table_caption before_tr "
         "tr td_group td_img td_id td_name after_td")
 
     def __init__(self):
@@ -90,12 +125,19 @@ class CourseListParser(HTMLParser):
         State = CourseListParser.State
         self.state = State.before_sem
         self.courses = []
+        self.current_id = None
+        self.current_number = None
+        self.current_name = None
 
     def handle_starttag(self, tag, attrs):
         State = CourseListParser.State
         if self.state == State.before_sem:
             if tag == "div" and ("id", "my_seminars") in attrs:
                 self.state = State.before_thead_end
+        elif self.state == State.before_thead_end:
+            if tag == "caption":
+                self.state = State.table_caption
+                self.current_semester = ""
         elif self.state == State.before_tr and tag == "tr":
             self.state = State.tr
             self.current_url = self.current_number = self.current_name = ""
@@ -113,12 +155,16 @@ class CourseListParser(HTMLParser):
         elif self.state == State.before_thead_end:
             if tag == "thead":
                 self.state = State.before_tr
+        elif self.state == State.table_caption:
+            if tag == "caption":
+                self.state = State.before_thead_end
         elif self.state == State.after_td:
             if tag == "tr":
-                full_name = ' '.join(self.current_name.split())
+                full_name = compact(self.current_name)
                 name, type = re.match("(.*?)\s*\(\s*([^)]+)\s*\)\s*$", full_name).groups()
                 self.courses.append(Course(id=self.current_id,
-                        number=' '.join(self.current_number.split()),
+                        semester=compact(self.current_semester),
+                        number=compact(self.current_number),
                         name=name, type=type, sync=SyncMode.NoSync))
                 self.state = State.before_tr
 
@@ -128,6 +174,8 @@ class CourseListParser(HTMLParser):
             self.current_number += data
         elif self.state == State.td_name:
             self.current_name += data
+        elif self.state == State.table_caption:
+            self.current_semester += data
 
 def parse_course_list(html):
     return create_parser_and_feed(CourseListParser, html).courses
@@ -251,7 +299,7 @@ class FileDetailsParser(HTMLParser):
             self.state = State.in_origin_td
         elif tag == "td" and self.state == State.in_origin_td:
             self.state = State.in_open_div
-            date_str = " ".join(self.current_date.split())
+            date_str = compact(self.current_date)
             try:
                 self.file.created = datetime.strptime(date_str, "%d.%m.%Y - %H:%M")
             except ValueError:

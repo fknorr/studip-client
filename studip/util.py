@@ -32,3 +32,8 @@ def decrypt_password(secret, crypt):
         return password[:int(length)]
     except Exception:
         return None
+
+
+def compact(str):
+    return " ".join(str.split())
+
