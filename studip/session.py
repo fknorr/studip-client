@@ -174,6 +174,10 @@ class Session:
                 def unslash(str):
                     return str.replace("/", "\u2215")
 
+                descr_no_ext = file.description
+                if descr_no_ext.endswith("." + file.extension):
+                    descr_no_ext = descr_no_ext[:-1-len(file.extension)]
+
                 tokens = {
                     "course-id": file.course,
                     "course": unslash(file.course_name),
@@ -183,6 +187,7 @@ class Session:
                     "name": file.name,
                     "ext": file.extension,
                     "description": file.description,
+                    "descr-no-ext": descr_no_ext,
                     "author": file.author,
                     "time": file.created
                 }
