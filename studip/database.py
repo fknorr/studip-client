@@ -1,4 +1,4 @@
-import sqlite3, os
+import sqlite3, os, ast
 from enum import IntEnum
 
 
@@ -16,13 +16,14 @@ class Course:
 
 
 class File:
-    def __init__(self, id, course=None, course_name=None, path=None, name=None, author=None,
-            description=None, created=None, copyrighted=False):
+    def __init__(self, id, course=None, course_name=None, path=None, name=None, extension=None,
+            author=None, description=None, created=None, copyrighted=False):
         self.id = id
         self.course = course
         self.course_name = course_name
         self.path = path
         self.name = name
+        self.extension = extension
         self.author = author
         self.description = description
         self.created = created
@@ -48,7 +49,7 @@ class QueryError(Exception):
 
 
 class Database:
-    schema_version = 2
+    schema_version = 3
 
     def __init__(self, file_name):
         def connect(self):
@@ -151,20 +152,20 @@ class Database:
 
         if full:
             rows = self.query("""
-                    SELECT files.id, courses.id, courses.name, file_paths.path, files.name,
-                        files.author, files.description, files.created, files.copyrighted
-                    FROM file_paths
-                    INNER JOIN files ON file_paths.file = files.id
-                    INNER JOIN courses ON file_paths.course = courses.id
-                    WHERE courses.sync IN ({});
+                    SELECT id, course_id, course_name, path, name, extension, author, description,
+                        created, copyrighted
+                    FROM file_details
+                    WHERE sync IN ({});
                 """.format(", ".join(sync_modes)))
-            return [ File(*r) for r in rows ]
+            # Path is encoded as the string representation of a python list
+            return [ File(i, j, c, ast.literal_eval(path), n, e, a, d, t, y)
+                    for i, j, c, path, n, e, a, d, t, y in rows ]
 
         else:
             rows = self.query("""
-                    SELECT file_paths.file FROM file_paths
-                    INNER JOIN courses ON file_paths.course = courses.id
-                    WHERE courses.sync IN ({});
+                    SELECT id
+                    FROM file_details
+                    WHERE sync IN ({});
                 """.format(", ".join(sync_modes)))
             return [id for (id,) in rows]
 
@@ -193,19 +194,12 @@ class Database:
             parent, = rows[0]
 
         self.query("""
-                INSERT INTO files (id, folder, name, author, description, created, copyrighted)
-                VALUES (:id, :par, :name, :auth, :descr, :creat, :copy);
-            """, id=file.id, par=parent, name=file.name, auth=file.author, descr=file.description,
-            creat=file.created, copy=file.copyrighted, expected_rows=0)
+                INSERT INTO files (id, folder, name, extension, author, description, created,
+                    copyrighted)
+                VALUES (:id, :par, :name, :ext, :auth, :descr, :creat, :copy);
+            """, id=file.id, par=parent, name=file.name, ext=file.extension, auth=file.author,
+                descr=file.description, creat=file.created, copy=file.copyrighted, expected_rows=0)
 
-
-    def list_file_parent_dirs(self, file):
-        rows = self.query("""
-                SELECT paths.path
-                FROM file_parent_paths AS paths
-                WHERE paths.file = :file
-            """, file=file)
-        return [ path for path, in rows ]
 
     def commit(self):
         self.conn.commit()

@@ -221,7 +221,10 @@ class FileDetailsParser(HTMLParser):
                         self.state = State.in_folder_a
                     elif "sendfile.php" in href and not "zip=" in href:
                         self.file.id = get_url_field(href, "file_id")
-                        self.file.name = get_url_field(href, "file_name")
+                        file_name_parts = get_url_field(href, "file_name").rsplit(".", 1)
+                        self.file.name = file_name_parts[0]
+                        if len(file_name_parts) > 0:
+                            self.file.extension = file_name_parts[1]
             if tag == "div":
                 attrs = dict(attrs)
                 if "class" in attrs and "messagebox" in attrs["class"]:

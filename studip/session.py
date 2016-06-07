@@ -2,6 +2,7 @@ import os, time
 
 from requests import session, RequestException, Timeout
 from urllib.parse import urlencode
+from os import path
 
 from .parsers import *
 from .database import SyncMode
@@ -166,16 +167,31 @@ class Session:
                 select_sync_no=False):
 
             # Replace regular '/' by 'DIVISION SLASH' (U+2215) to create a valid directory name
-            course_dir = file.course_name.replace("/", "\u2215")
+            def unslash(str):
+                return str.replace("/", "\u2215")
 
-            dir = course_dir + file.path
-            dir_path = os.path.join(self.sync_dir, dir)
-            os.makedirs(dir_path, exist_ok=True)
+            tokens = {
+                "course-id": file.course,
+                "course": unslash(file.course_name),
+                "path": path.join(*map(unslash, file.path)),
+                "id": file.id,
+                "name": file.name,
+                "ext": file.extension,
+                "description": file.description,
+                "author": file.author,
+                "time": file.created
+            }
 
-            rel_path = dir + "/" + file.name
-            abs_path = dir_path + "/" + file.name
+            path_format = "{course}/{path}/{name}.{ext}"
+            try:
+                rel_path = path_format.format(**tokens)
+            except Exception:
+                raise SessionError("Invalid path format: " + path_format)
 
-            if not os.path.isfile(abs_path):
+            abs_path = path.join(self.sync_dir, rel_path)
+            os.makedirs(path.dirname(abs_path), exist_ok=True)
+
+            if not path.isfile(abs_path):
                 if first_file:
                     print()
                     first_file = False
@@ -196,21 +212,24 @@ class Session:
                     copyrighted_files.append(rel_path)
 
                 os.utime(abs_path, (timestamp, timestamp))
-                parent_dirs = (course_dir + par for par in self.db.list_file_parent_dirs(file.id))
-                modified_folders.update(parent_dirs)
+
+                folder = path.dirname(rel_path)
+                while folder:
+                    modified_folders.add(folder)
+                    folder = path.dirname(folder)
 
         modified_folders = list(modified_folders)
         modified_folders.sort(key=lambda f: len(f), reverse=True)
 
-        def update_directory_mtime(path):
+        def update_directory_mtime(dir):
             latest_ctime = 0
-            for file in os.listdir(path):
+            for file in os.listdir(dir):
                 if not file.startswith("."):
-                    latest_ctime = max(latest_ctime, os.path.getmtime(path + "/" + file))
-            os.utime(path, (latest_ctime, latest_ctime))
+                    latest_ctime = max(latest_ctime, path.getmtime(dir + "/" + file))
+            os.utime(dir, (latest_ctime, latest_ctime))
 
         for folder in modified_folders:
-            update_directory_mtime(self.sync_dir + "/" + folder)
+            update_directory_mtime(path.join(self.sync_dir, folder))
         update_directory_mtime(self.sync_dir)
 
         if copyrighted_files:

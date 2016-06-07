@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS files (
     id CHAR(32) NOT NULL,
     folder INTEGER NOT NULL,
     name VARCHAR(128) NOT NULL,
+    extension VARCHAR(32),
     author VARCHAR(64),
     description VARCHAR(256),
     created TIMESTAMP,
@@ -50,33 +51,24 @@ CREATE VIEW IF NOT EXISTS folder_parents (folder, level, this) AS
     SELECT folder, level, this FROM parents;
 
 CREATE VIEW IF NOT EXISTS folder_paths (folder, course, path) AS
-    SELECT list.folder, MAX(courses.id), GROUP_CONCAT(folders.name, '/')
+    SELECT list.folder, MAX(courses.id), '[' || IFNULL(GROUP_CONCAT(
+        '"' || REPLACE(folders.name, '"', '\"') || '"', ', '), '') || ']'
     FROM (
         SELECT parents.folder AS folder, parents.this AS this
         FROM folder_parents AS parents
         ORDER BY level DESC
     ) AS list
-    INNER JOIN (
-        SELECT id, CASE WHEN folders.name IS NOT NULL THEN folders.name ELSE '' END AS name
-        FROM folders
-    ) AS folders ON folders.id = list.this
+    INNER JOIN folders ON folders.id = list.this
     LEFT OUTER JOIN courses ON courses.root = folders.id
     GROUP BY folder;
 
-CREATE VIEW IF NOT EXISTS folder_parent_paths (folder, course, level, path) AS
-    SELECT parents.folder, paths.course, parents.level, paths.path
-    FROM folder_parents AS parents
-    INNER JOIN folder_paths AS paths ON parents.this = paths.folder;
-
-CREATE VIEW IF NOT EXISTS file_paths (file, course, path) AS
-    SELECT files.id, paths.course, paths.path
+CREATE VIEW IF NOT EXISTS file_details (id, course_id, course_name, path, name, extension, author,
+        description, created, copyrighted, sync) AS
+    SELECT files.id, courses.id, courses.name, paths.path, files.name, files.extension,
+            files.author, files.description, files.created, files.copyrighted, courses.sync
     FROM files
-    INNER JOIN folder_paths AS paths ON files.folder = paths.folder;
-
-CREATE VIEW IF NOT EXISTS file_parent_paths (file, course, level, path) AS
-    SELECT files.id, paths.course, paths.level, paths.path
-    FROM files
-    INNER JOIN folder_parent_paths AS paths ON files.folder = paths.folder;
+    INNER JOIN folder_paths AS paths ON files.folder = paths.folder
+    INNER JOIN courses ON paths.course = courses.id;
 
 CREATE VIEW IF NOT EXISTS folder_times (folder, time) AS
     WITH RECURSIVE ctimes (folder, time) AS (
