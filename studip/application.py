@@ -189,13 +189,8 @@ class Application:
         interrupt = None
         try:
             self.session.update_metadata()
-        except KeyboardInterrupt as e:
-            interrupt = e
-
-        self.database.commit()
-
-        if interrupt:
-            raise interrupt
+        finally:
+            self.database.commit()
 
 
     def download_files(self):

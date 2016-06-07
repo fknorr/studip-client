@@ -163,80 +163,88 @@ class Session:
         modified_folders = set()
         copyrighted_files = []
 
-        for file in self.db.list_files(full=True, select_sync_metadata_only=False,
-                select_sync_no=False):
+        try:
+            for file in self.db.list_files(full=True, select_sync_metadata_only=False,
+                    select_sync_no=False):
 
-            # Replace regular '/' by 'DIVISION SLASH' (U+2215) to create a valid directory name
-            def unslash(str):
-                return str.replace("/", "\u2215")
+                # Replace regular '/' by 'DIVISION SLASH' (U+2215) to create a valid directory name
+                def unslash(str):
+                    return str.replace("/", "\u2215")
 
-            tokens = {
-                "course-id": file.course,
-                "course": unslash(file.course_name),
-                "path": path.join(*map(unslash, file.path)),
-                "id": file.id,
-                "name": file.name,
-                "ext": file.extension,
-                "description": file.description,
-                "author": file.author,
-                "time": file.created
-            }
+                tokens = {
+                    "course-id": file.course,
+                    "course": unslash(file.course_name),
+                    "path": path.join(*map(unslash, file.path)),
+                    "id": file.id,
+                    "name": file.name,
+                    "ext": file.extension,
+                    "description": file.description,
+                    "author": file.author,
+                    "time": file.created
+                }
 
-            path_format = "{course}/{path}/{name}.{ext}"
-            try:
-                rel_path = path_format.format(**tokens)
-            except Exception:
-                raise SessionError("Invalid path format: " + path_format)
-
-            abs_path = path.join(self.sync_dir, rel_path)
-            os.makedirs(path.dirname(abs_path), exist_ok=True)
-
-            if not path.isfile(abs_path):
-                if first_file:
-                    print()
-                    first_file = False
-                print("Downloading file {}...".format(rel_path))
-
-                url = self.studip_url("/studip/sendfile.php?force_download=1&type=0&" \
-                        + urlencode({"file_id": file.id, "file_name": file.name }))
+                path_format = "{course}/{path}/{name}.{ext}"
                 try:
-                    r = self.http.get(url)
-                except RequestException as e:
-                    raise SessionError("Unable to download file {}: {}".format(file.name, str(e)))
+                    rel_path = path_format.format(**tokens)
+                except Exception:
+                    raise SessionError("Invalid path format: " + path_format)
 
-                with open(abs_path, "wb") as writer:
-                    writer.write(r.content)
-                    timestamp = time.mktime(file.created.timetuple())
-
-                if file.copyrighted:
-                    copyrighted_files.append(rel_path)
-
-                os.utime(abs_path, (timestamp, timestamp))
-
+                # First update modified_folders, then create directories.
                 folder = path.dirname(rel_path)
                 while folder:
                     modified_folders.add(folder)
                     folder = path.dirname(folder)
 
-        modified_folders = list(modified_folders)
-        modified_folders.sort(key=lambda f: len(f), reverse=True)
+                abs_path = path.join(self.sync_dir, rel_path)
+                os.makedirs(path.dirname(abs_path), exist_ok=True)
 
-        def update_directory_mtime(dir):
-            latest_ctime = 0
-            for file in os.listdir(dir):
-                if not file.startswith("."):
-                    latest_ctime = max(latest_ctime, path.getmtime(dir + "/" + file))
-            os.utime(dir, (latest_ctime, latest_ctime))
+                if not path.isfile(abs_path):
+                    if first_file:
+                        print()
+                        first_file = False
+                    print("Downloading file {}...".format(rel_path))
 
-        for folder in modified_folders:
-            update_directory_mtime(path.join(self.sync_dir, folder))
-        update_directory_mtime(self.sync_dir)
+                    url = self.studip_url("/studip/sendfile.php?force_download=1&type=0&" \
+                            + urlencode({"file_id": file.id, "file_name": file.name }))
+                    try:
+                        r = self.http.get(url)
+                    except RequestException as e:
+                        raise SessionError("Unable to download file {}: {}".format(file.name, e))
 
-        if copyrighted_files:
-            print("\n" + "-"*80)
-            print("The following files have special copyright notices:\n")
-            for file in copyrighted_files:
-                print("  -", file)
-            print("\nPlease make sure you have looked up, read and understood the terms and"
-                    " conditions of these files before proceeding to use them.")
-            print("-"*80 + "\n")
+                    with open(abs_path, "wb") as writer:
+                        writer.write(r.content)
+                        timestamp = time.mktime(file.created.timetuple())
+
+                    if file.copyrighted:
+                        copyrighted_files.append(rel_path)
+
+                    os.utime(abs_path, (timestamp, timestamp))
+
+        finally:
+            modified_folders = list(modified_folders)
+            modified_folders.sort(key=lambda f: len(f), reverse=True)
+
+            def update_directory_mtime(dir):
+                latest_ctime = 0
+                for file in os.listdir(dir):
+                    if not file.startswith("."):
+                        latest_ctime = max(latest_ctime, path.getmtime(dir + "/" + file))
+
+                # This may fail if a directory has not been created yet.
+                try:
+                    os.utime(dir, (latest_ctime, latest_ctime))
+                except Exception:
+                    pass
+
+            for folder in modified_folders:
+                update_directory_mtime(path.join(self.sync_dir, folder))
+            update_directory_mtime(self.sync_dir)
+
+            if copyrighted_files:
+                print("\n" + "-"*80)
+                print("The following files have special copyright notices:\n")
+                for file in copyrighted_files:
+                    print("  -", file)
+                print("\nPlease make sure you have looked up, read and understood the terms and"
+                        " conditions of these files before proceeding to use them.")
+                print("-"*80 + "\n")
