@@ -83,6 +83,7 @@ At the moment, the only way to modify _studip-client_'s configuration is by edit
 - `filesystem`: Specifies how files will be saved to disk.
     - `path_format`: A string specifying how each file's path will be built from its metadata. The
       following placeholders are available:
+
       ```
       {course-id}       Course hash-id
       {course}          Course name
@@ -97,6 +98,7 @@ At the moment, the only way to modify _studip-client_'s configuration is by edit
       {author}          File author's name
       {time}            Time of creation
       ```
+      
 - `user`: Login credentials. The password will be encrypted with `~/.cache/studip/secret` as the
   key, which means it cannot be edited directly.
 
