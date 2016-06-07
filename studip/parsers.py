@@ -1,4 +1,4 @@
-import requests
+import requests, re
 from html.parser import HTMLParser
 from enum import IntEnum
 import urllib.parse as urlparse
@@ -115,9 +115,11 @@ class CourseListParser(HTMLParser):
                 self.state = State.before_tr
         elif self.state == State.after_td:
             if tag == "tr":
+                full_name = ' '.join(self.current_name.split())
+                name, type = re.match("(.*?)\s*\(\s*([^)]+)\s*\)\s*$", full_name).groups()
                 self.courses.append(Course(id=self.current_id,
                         number=' '.join(self.current_number.split()),
-                        name=' '.join(self.current_name.split()), sync=SyncMode.NoSync))
+                        name=name, type=type, sync=SyncMode.NoSync))
                 self.state = State.before_tr
 
     def handle_data(self, data):

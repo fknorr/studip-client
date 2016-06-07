@@ -2,6 +2,7 @@ CREATE TABLE IF NOT EXISTS courses (
     id CHAR(32) NOT NULL,
     number VARCHAR(8) DEFAULT "",
     name VARCHAR(128) NOT NULL,
+    type VARCHAR(32) NOT NULL,
     sync SMALLINT NOT NULL,
     root INTEGER,
     PRIMARY KEY (id ASC),
@@ -62,9 +63,9 @@ CREATE VIEW IF NOT EXISTS folder_paths (folder, course, path) AS
     LEFT OUTER JOIN courses ON courses.root = folders.id
     GROUP BY folder;
 
-CREATE VIEW IF NOT EXISTS file_details (id, course_id, course_name, path, name, extension, author,
-        description, created, copyrighted, sync) AS
-    SELECT files.id, courses.id, courses.name, paths.path, files.name, files.extension,
+CREATE VIEW IF NOT EXISTS file_details (id, course_id, course_name, course_type, path, name,
+        extension, author, description, created, copyrighted, sync) AS
+    SELECT files.id, courses.id, courses.name, courses.type, paths.path, files.name, files.extension,
             files.author, files.description, files.created, files.copyrighted, courses.sync
     FROM files
     INNER JOIN folder_paths AS paths ON files.folder = paths.folder

@@ -163,6 +163,8 @@ class Session:
         modified_folders = set()
         copyrighted_files = []
 
+        path_format = "{course} ({type})/{path}/{name}.{ext}"
+
         try:
             for file in self.db.list_files(full=True, select_sync_metadata_only=False,
                     select_sync_no=False):
@@ -174,6 +176,7 @@ class Session:
                 tokens = {
                     "course-id": file.course,
                     "course": unslash(file.course_name),
+                    "type": file.course_type,
                     "path": path.join(*map(unslash, file.path)),
                     "id": file.id,
                     "name": file.name,
@@ -183,7 +186,6 @@ class Session:
                     "time": file.created
                 }
 
-                path_format = "{course}/{path}/{name}.{ext}"
                 try:
                     rel_path = path_format.format(**tokens)
                 except Exception:
