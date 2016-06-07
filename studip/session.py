@@ -174,15 +174,23 @@ class Session:
                 def unslash(str):
                     return str.replace("/", "\u2215")
 
+                def make_path(folders):
+                    return path.join(*map(unslash, folders)) if folders else ""
+
                 descr_no_ext = file.description
                 if descr_no_ext.endswith("." + file.extension):
                     descr_no_ext = descr_no_ext[:-1-len(file.extension)]
 
+                short_path = file.path
+                if short_path[0] == "Allgemeiner Dateiordner":
+                    short_path = short_path[1:]
+
                 tokens = {
                     "course-id": file.course,
                     "course": unslash(file.course_name),
-                    "type": file.course_type,
-                    "path": path.join(*map(unslash, file.path)),
+                    "type": unslash(file.course_type),
+                    "path": make_path(file.path),
+                    "short-path": make_path(short_path),
                     "id": file.id,
                     "name": file.name,
                     "ext": file.extension,
