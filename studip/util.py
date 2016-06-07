@@ -12,9 +12,7 @@ def ellipsize(string, length):
     if len(string) <= length:
         return string
     else:
-        left = length // 2 - 2
-        return string[:left] + " .. " + string[len(string)-left:]
-
+        return string[:length - 3] + "..."
 
 def xor_bytes(key, text):
     while len(key) < len(text): key += key

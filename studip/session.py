@@ -95,8 +95,8 @@ class Session:
                 self.db.delete_course(course)
 
         for course in new_courses:
-            sync = prompt_choice("Synchronize \"{}\"? ([Y]es, [n]o, [m]etadata only)".format(
-                    ellipsize(course.name, 50)), "ynm", default="y")
+            sync = prompt_choice("Synchronize {} {}? ([Y]es, [n]o, [m]etadata only)".format(
+                    course.type, ellipsize(course.name, 40)), "ynm", default="y")
             course.sync = { "y" : SyncMode.Full, "n" : SyncMode.NoSync, "m" : SyncMode.Metadata }[
                     sync]
             self.db.add_course(course)
@@ -135,7 +135,7 @@ class Session:
             else:
                 print("No", end="")
                 last_course_synced = False
-            print(" new files for " + course.name)
+            print(" new files for {} {} ".format(course.type, course.name))
 
             for i, file_id in enumerate(new_files):
                 print("Fetching metadata for file {}/{}...".format(i+1, len(new_files)),
