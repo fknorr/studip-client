@@ -3,6 +3,9 @@ import os, time
 from requests import session, RequestException, Timeout
 from urllib.parse import urlencode
 from os import path
+from threading import Thread, Condition
+from copy import deepcopy
+from enum import IntEnum
 
 from .parsers import *
 from .database import SyncMode
@@ -18,6 +21,72 @@ class LoginError(SessionError):
 
 def raise_fetch_error(page, e):
     raise SessionError("Unable to fetch {}: {}".format(page, str(e)))
+
+
+class SessionPool:
+    def __init__(self, n_threads, cookies):
+        self.threads = [ Thread(target=lambda: self.thread_main(deepcopy(cookies)))
+                for _ in range(n_threads) ]
+
+        self.queue = []
+        self.results = []
+        self.quit = False
+        self.last_req_no = -1
+        self.last_finished_no = -1
+        self.done_at_no = -1
+        self.thread_cv = Condition()
+        self.iter_cv = Condition()
+
+        for thread in self.threads:
+            thread.start()
+
+    def thread_main(self, cookies):
+        session = requests.session()
+        session.cookies = cookies
+
+        with self.thread_cv:
+            while not self.quit or self.queue:
+                self.thread_cv.wait_for(lambda: self.quit or self.queue)
+                if self.queue:
+                    id, no, args, kwargs = self.queue.pop(0)
+                    with self.iter_cv:
+                        self.results.append((id, session.request(*args, **kwargs)))
+                        self.last_finished_no = no
+                        self.iter_cv.notify()
+
+        session.close()
+
+    def request(self, id, *args, **kwargs):
+        with self.thread_cv:
+            if self.quit:
+                raise Exception("SessionPool.request() called after done()")
+            self.done_at_no = -1
+            self.last_req_no += 1
+            with self.iter_cv:
+                self.queue.append((id, self.last_req_no, args, kwargs))
+            self.thread_cv.notify()
+
+    def __iter__(self):
+        with self.iter_cv:
+            while self.last_finished_no != self.done_at_no:
+                self.iter_cv.wait_for(
+                        lambda: self.last_finished_no == self.done_at_no or self.results)
+                if self.results:
+                    yield self.results.pop(0)
+        raise StopIteration()
+
+    def done(self):
+        with self.thread_cv:
+            with self.iter_cv:
+                self.done_at_no = self.last_req_no
+                self.thread_cv.notify_all()
+
+    def close(self):
+        with self.thread_cv:
+            self.quit = True
+            self.thread_cv.notify_all()
+        for thread in self.threads:
+            thread.join()
 
 
 class Session:
@@ -106,6 +175,7 @@ class Session:
         sync_courses = self.db.list_courses(full=True, select_sync_no=False)
         last_course_synced = False
         db_files = self.db.list_files()
+
         for course in sync_courses:
             course_url = self.studip_url("/studip/seminar_main.php?auswahl=" + course.id)
             folder_url = self.studip_url("/studip/folder.php?cid=" + course.id + "&cmd=all")
@@ -139,18 +209,18 @@ class Session:
                 last_course_synced = False
             print(" new files for {} {} ".format(course.type, course.name))
 
-            for i, file_id in enumerate(new_files):
-                print("Fetching metadata for file {}/{}...".format(i+1, len(new_files)),
+            pool = SessionPool(4, self.http.cookies)
+
+            for file_id in new_files:
+                pool.request(file_id, "GET", folder_url + "&open=" + file_id)
+            pool.done()
+
+            for i, (file_id, request) in enumerate(pool):
+                print("Parsing metadata for file {}/{}...".format(i+1, len(new_files)),
                         end="", flush=True)
 
-                open_url = folder_url + "&open=" + file_id
                 try:
-                    r = self.http.get(open_url)
-                except RequestException as e:
-                    raise_fetch_error("overview page", e)
-
-                try:
-                    file = parse_file_details(course.id, r.text)
+                    file = parse_file_details(course.id, request.text)
                 except ParserError:
                     raise SessionError("Unable to parse file details")
 
@@ -159,6 +229,8 @@ class Session:
                     print(" " + file.description)
                 else:
                     print(" <bad format>")
+
+            pool.close()
 
 
     def download_files(self):
