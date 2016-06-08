@@ -1,9 +1,9 @@
-import os, time
+import os, time, threading, ctypes
 
 from requests import session, RequestException, Timeout
 from urllib.parse import urlencode
 from os import path
-from threading import Thread, Condition
+from threading import Thread, Condition, Lock
 from copy import deepcopy
 from enum import IntEnum
 
@@ -23,6 +23,10 @@ def raise_fetch_error(page, e):
     raise SessionError("Unable to fetch {}: {}".format(page, str(e)))
 
 
+class ExitThread(BaseException):
+    pass
+
+
 class SessionPool:
     def __init__(self, n_threads, cookies):
         self.threads = [ Thread(target=lambda: self.thread_main(deepcopy(cookies)))
@@ -30,61 +34,59 @@ class SessionPool:
 
         self.queue = []
         self.results = []
-        self.quit = False
         self.last_req_no = -1
         self.last_finished_no = -1
         self.done_at_no = -1
-        self.thread_cv = Condition()
-        self.iter_cv = Condition()
+        self.lock = Lock()
+        self.thread_cv = Condition(self.lock)
+        self.iter_cv = Condition(self.lock)
 
         for thread in self.threads:
             thread.start()
 
     def thread_main(self, cookies):
         session = requests.session()
-        session.cookies = cookies
-
-        with self.thread_cv:
-            while not self.quit:
-                self.thread_cv.wait_for(lambda: self.quit or self.queue)
-                if self.queue:
+        try:
+            session.cookies = cookies
+            while True:
+                with self.lock:
+                    self.thread_cv.wait_for(lambda: self.queue)
                     id, no, args, kwargs = self.queue.pop(0)
-                    with self.iter_cv:
-                        self.results.append((id, session.request(*args, **kwargs)))
-                        self.last_finished_no = no
-                        self.iter_cv.notify()
-
-        session.close()
+                result = (id, session.request(*args, **kwargs))
+                with self.lock:
+                    self.results.append(result)
+                    self.last_finished_no = max(self.last_finished_no, no)
+                    self.iter_cv.notify()
+        except ExitThread:
+            pass
+        finally:
+            session.close()
 
     def request(self, id, *args, **kwargs):
-        with self.thread_cv:
-            if self.quit:
-                raise Exception("SessionPool.request() called after done()")
+        with self.lock:
             self.done_at_no = -1
             self.last_req_no += 1
-            with self.iter_cv:
-                self.queue.append((id, self.last_req_no, args, kwargs))
+            self.queue.append((id, self.last_req_no, args, kwargs))
             self.thread_cv.notify()
 
     def __iter__(self):
-        with self.iter_cv:
-            while self.last_finished_no != self.done_at_no:
+        with self.lock:
+            while self.last_finished_no < self.done_at_no:
                 self.iter_cv.wait_for(
-                        lambda: self.last_finished_no == self.done_at_no or self.results)
+                        lambda: self.last_finished_no >= self.done_at_no or self.results)
                 if self.results:
                     yield self.results.pop(0)
         raise StopIteration()
 
     def done(self):
-        with self.thread_cv:
-            with self.iter_cv:
-                self.done_at_no = self.last_req_no
-                self.thread_cv.notify_all()
+        with self.lock:
+            self.done_at_no = self.last_req_no
 
     def close(self):
-        with self.thread_cv:
-            self.quit = True
-            self.thread_cv.notify_all()
+        for thread in self.threads:
+            # raise ExitThread in every thread
+            ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(thread.ident),
+                ctypes.py_object(ExitThread))
         for thread in self.threads:
             thread.join()
 
