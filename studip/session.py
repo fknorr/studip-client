@@ -45,7 +45,7 @@ class SessionPool:
         session.cookies = cookies
 
         with self.thread_cv:
-            while not self.quit or self.queue:
+            while not self.quit:
                 self.thread_cv.wait_for(lambda: self.quit or self.queue)
                 if self.queue:
                     id, no, args, kwargs = self.queue.pop(0)
@@ -87,6 +87,12 @@ class SessionPool:
             self.thread_cv.notify_all()
         for thread in self.threads:
             thread.join()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, type, value, traceback):
+        self.close()
 
 
 class Session:
@@ -176,61 +182,58 @@ class Session:
         last_course_synced = False
         db_files = self.db.list_files()
 
-        for course in sync_courses:
-            course_url = self.studip_url("/studip/seminar_main.php?auswahl=" + course.id)
-            folder_url = self.studip_url("/studip/folder.php?cid=" + course.id + "&cmd=all")
-
-            try:
-                self.http.get(course_url, timeout=(None, 0))
-            except (KeyboardInterrupt, SystemExit):
-                raise
-            except Timeout:
-                pass
-            except RequestException as e:
-                raise SessionError("Unable to set course: {}".format(str(e)))
-
-            r = self.http.get(folder_url)
-            try:
-                file_list = parse_file_list(r.text)
-            except ParserError:
-                raise SessionError("Unable to parse file list")
-
-            if last_course_synced:
-                print()
-
-            new_files = [ file_id for file_id in file_list if file_id not in db_files ]
-            if len(new_files) > 0 :
-                if not last_course_synced:
-                    print()
-                print(len(new_files), end="")
-                last_course_synced = True
-            else:
-                print("No", end="")
-                last_course_synced = False
-            print(" new files for {} {} ".format(course.type, course.name))
-
-            pool = SessionPool(4, self.http.cookies)
-
-            for file_id in new_files:
-                pool.request(file_id, "GET", folder_url + "&open=" + file_id)
-            pool.done()
-
-            for i, (file_id, request) in enumerate(pool):
-                print("Parsing metadata for file {}/{}...".format(i+1, len(new_files)),
-                        end="", flush=True)
+        with SessionPool(4, self.http.cookies) as pool:
+            for course in sync_courses:
+                course_url = self.studip_url("/studip/seminar_main.php?auswahl=" + course.id)
+                folder_url = self.studip_url("/studip/folder.php?cid=" + course.id + "&cmd=all")
 
                 try:
-                    file = parse_file_details(course.id, request.text)
+                    self.http.get(course_url, timeout=(None, 0))
+                except (KeyboardInterrupt, SystemExit):
+                    raise
+                except Timeout:
+                    pass
+                except RequestException as e:
+                    raise SessionError("Unable to set course: {}".format(str(e)))
+
+                r = self.http.get(folder_url)
+                try:
+                    file_list = parse_file_list(r.text)
                 except ParserError:
-                    raise SessionError("Unable to parse file details")
+                    raise SessionError("Unable to parse file list")
 
-                if file.complete():
-                    self.db.add_file(file)
-                    print(" " + file.description)
+                if last_course_synced:
+                    print()
+
+                new_files = [ file_id for file_id in file_list if file_id not in db_files ]
+                if len(new_files) > 0 :
+                    if not last_course_synced:
+                        print()
+                    print(len(new_files), end="")
+                    last_course_synced = True
                 else:
-                    print(" <bad format>")
+                    print("No", end="")
+                    last_course_synced = False
+                print(" new files for {} {} ".format(course.type, course.name))
 
-            pool.close()
+                for file_id in new_files:
+                    pool.request(file_id, "GET", folder_url + "&open=" + file_id)
+                pool.done()
+
+                for i, (file_id, request) in enumerate(pool):
+                    print("Parsing metadata for file {}/{}...".format(i+1, len(new_files)),
+                            end="", flush=True)
+
+                    try:
+                        file = parse_file_details(course.id, request.text)
+                    except ParserError:
+                        raise SessionError("Unable to parse file details")
+
+                    if file.complete():
+                        self.db.add_file(file)
+                        print(" " + file.description)
+                    else:
+                        print(" <bad format>")
 
 
     def download_files(self):
