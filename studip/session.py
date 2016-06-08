@@ -51,8 +51,8 @@ class SessionPool:
             while True:
                 with self.lock:
                     self.thread_cv.wait_for(lambda: self.queue)
-                    id, no, args, kwargs = self.queue.pop(0)
-                result = (id, session.request(*args, **kwargs))
+                    id, func = self.queue.pop(0)
+                result = (id, func(session))
                 with self.lock:
                     self.results.append(result)
                     self.last_finished_no += 1
@@ -62,11 +62,11 @@ class SessionPool:
         finally:
             session.close()
 
-    def request(self, id, *args, **kwargs):
+    def defer(self, id, func):
         with self.lock:
             self.done_at_no = -1
             self.last_req_no += 1
-            self.queue.append((id, self.last_req_no, args, kwargs))
+            self.queue.append((id, func))
             self.thread_cv.notify()
 
     def __iter__(self):
@@ -223,19 +223,20 @@ class Session:
                     last_course_synced = False
                 print(" new files for {} {} ".format(course.type, course.name))
 
-                for file_id in new_files:
-                    pool.request(file_id, "GET", folder_url + "&open=" + file_id)
-                pool.done()
-
-                for i, (file_id, request) in enumerate(pool):
-                    print("Parsing metadata for file {}/{}...".format(i+1, len(new_files)),
-                            end="", flush=True)
-
+                def fetch_and_parse(session, file_id):
+                    r = session.get(folder_url + "&open=" + file_id)
                     try:
-                        file = parse_file_details(course.id, request.text)
+                        return parse_file_details(course.id, r.text)
                     except ParserError:
                         raise SessionError("Unable to parse file details")
 
+                for file_id in new_files:
+                    pool.defer(file_id, lambda session, id=file_id: fetch_and_parse(session, id))
+                pool.done()
+
+                for i, (file_id, file) in enumerate(pool):
+                    print("Fetched metadata for file {}/{}: ".format(i+1, len(new_files)),
+                            end="", flush=True)
                     if file.complete():
                         self.db.add_file(file)
                         print(" " + file.description)
