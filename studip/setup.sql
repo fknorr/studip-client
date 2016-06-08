@@ -49,7 +49,7 @@ BEGIN
     UPDATE courses SET root = last_insert_rowid() WHERE id = new.id;
 END;
 
-CREATE VIEW IF NOT EXISTS folder_parents (folder, level, this) AS
+CREATE VIEW IF NOT EXISTS folder_parents AS
     WITH RECURSIVE parents (folder, level, this, parent) AS (
         SELECT id, 0, id, parent
             FROM folders
@@ -60,9 +60,11 @@ CREATE VIEW IF NOT EXISTS folder_parents (folder, level, this) AS
     )
     SELECT folder, level, this FROM parents;
 
-CREATE VIEW IF NOT EXISTS folder_paths (folder, course, path) AS
-    SELECT list.folder, MAX(courses.id), '[' || IFNULL(GROUP_CONCAT(
-        '"' || REPLACE(folders.name, '"', '\"') || '"', ', '), '') || ']'
+CREATE VIEW IF NOT EXISTS folder_paths AS
+    SELECT list.folder AS folder,
+        MAX(courses.id) AS course,
+        '[' || IFNULL(GROUP_CONCAT('"' || REPLACE(folders.name,
+            '"', '\"') || '"', ', '), '') || ']' AS path
     FROM (
         SELECT parents.folder AS folder, parents.this AS this
         FROM folder_parents AS parents
@@ -72,17 +74,17 @@ CREATE VIEW IF NOT EXISTS folder_paths (folder, course, path) AS
     LEFT OUTER JOIN courses ON courses.root = folders.id
     GROUP BY folder;
 
-CREATE VIEW IF NOT EXISTS file_details (id, course_id, course_semester, course_name, course_type,
-        path, name, extension, author, description, created, copyrighted, sync) AS
-    SELECT files.id, courses.id, semesters.name, courses.name, courses.type, paths.path,
-            files.name, files.extension, files.author, files.description, files.created,
-            files.copyrighted, courses.sync
-    FROM files
-    INNER JOIN folder_paths AS paths ON files.folder = paths.folder
-    INNER JOIN courses ON paths.course = courses.id
-    INNER JOIN semesters ON courses.semester = semesters.id;
+CREATE VIEW IF NOT EXISTS file_details AS
+    SELECT f.id AS id, c.id AS course_id, s.name AS course_semester, c.name AS course_name,
+            c.type AS course_type, p.path AS path, f.name AS name, f.extension AS extension,
+            f.author AS author, f.description AS description, f.created AS created,
+            f.copyrighted AS copyrighted, c.sync AS sync
+    FROM files AS f
+    INNER JOIN folder_paths AS p ON f.folder = p.folder
+    INNER JOIN courses AS c ON p.course = c.id
+    INNER JOIN semesters AS s ON c.semester = s.id;
 
-CREATE VIEW IF NOT EXISTS folder_times (folder, time) AS
+CREATE VIEW IF NOT EXISTS folder_times AS
     WITH RECURSIVE ctimes (folder, time) AS (
         SELECT folder, created
             FROM files
@@ -92,5 +94,5 @@ CREATE VIEW IF NOT EXISTS folder_times (folder, time) AS
             INNER JOIN ctimes ON ctimes.folder = folders.id
             WHERE folders.parent IS NOT NULL
     )
-    SELECT folder, MAX(time) from ctimes
+    SELECT ctimes.folder, MAX(ctimes.time) AS time from ctimes
     GROUP BY folder;
