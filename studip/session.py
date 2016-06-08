@@ -55,7 +55,7 @@ class SessionPool:
                 result = (id, session.request(*args, **kwargs))
                 with self.lock:
                     self.results.append(result)
-                    self.last_finished_no = max(self.last_finished_no, no)
+                    self.last_finished_no += 1
                     self.iter_cv.notify()
         except ExitThread:
             pass
@@ -71,11 +71,13 @@ class SessionPool:
 
     def __iter__(self):
         with self.lock:
-            while self.last_finished_no < self.done_at_no:
+            while self.last_finished_no <= self.done_at_no:
                 self.iter_cv.wait_for(
                         lambda: self.last_finished_no >= self.done_at_no or self.results)
                 if self.results:
                     yield self.results.pop(0)
+                else:
+                    break
         raise StopIteration()
 
     def done(self):
@@ -87,6 +89,9 @@ class SessionPool:
             # raise ExitThread in every thread
             ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(thread.ident),
                 ctypes.py_object(ExitThread))
+        with self.lock:
+            # Wake up all waiting threads to handle exception
+            self.thread_cv.notify_all()
         for thread in self.threads:
             thread.join()
 
