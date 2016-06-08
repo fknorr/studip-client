@@ -108,12 +108,9 @@ class SemesterListParser(HTMLParser):
 
 def parse_semester_list(html):
     parser = create_parser_and_feed(SemesterListParser, html)
-    if parser.selected:
-        for i, sem in enumerate(parser.semesters):
-            sem.order = len(parser.semesters) - 1 - i
-        return parser
-    else:
-        raise ParserError("SemesterList")
+    for i, sem in enumerate(parser.semesters):
+        sem.order = len(parser.semesters) - 1 - i
+    return parser
 
 
 class CourseListParser(HTMLParser):
