@@ -10,6 +10,7 @@ from enum import IntEnum
 from .parsers import *
 from .database import SyncMode
 from .util import prompt_choice, ellipsize
+from .async import ThreadPool
 
 
 class SessionError(Exception):
@@ -23,83 +24,23 @@ def raise_fetch_error(page, e):
     raise SessionError("Unable to fetch {}: {}".format(page, str(e)))
 
 
-class ExitThread(BaseException):
-    pass
-
-
-class SessionPool:
+class SessionPool(ThreadPool):
     def __init__(self, n_threads, cookies):
-        self.threads = [ Thread(target=lambda: self.thread_main(deepcopy(cookies)))
-                for _ in range(n_threads) ]
+        super().__init__(n_threads, { "cookies": cookies })
 
-        self.queue = []
-        self.results = []
-        self.last_req_no = -1
-        self.last_finished_no = -1
-        self.done_at_no = -1
-        self.lock = Lock()
-        self.thread_cv = Condition(self.lock)
-        self.iter_cv = Condition(self.lock)
-
-        for thread in self.threads:
-            thread.start()
-
-    def thread_main(self, cookies):
+    def init_thread(self, local_state):
         session = requests.session()
-        try:
-            session.cookies = cookies
-            while True:
-                with self.lock:
-                    self.thread_cv.wait_for(lambda: self.queue)
-                    id, func = self.queue.pop(0)
-                result = (id, func(session))
-                with self.lock:
-                    self.results.append(result)
-                    self.last_finished_no += 1
-                    self.iter_cv.notify()
-        except ExitThread:
-            pass
-        finally:
-            session.close()
+        session.cookies = local_state["cookies"]
+        local_state["session"] = session
 
-    def defer(self, id, func):
-        with self.lock:
-            self.done_at_no = -1
-            self.last_req_no += 1
-            self.queue.append((id, func))
-            self.thread_cv.notify()
+    def cleanup_thread(self, local_state):
+        local_state["session"].close()
 
-    def __iter__(self):
-        with self.lock:
-            while self.last_finished_no <= self.done_at_no:
-                self.iter_cv.wait_for(
-                        lambda: self.last_finished_no >= self.done_at_no or self.results)
-                if self.results:
-                    yield self.results.pop(0)
-                else:
-                    break
-        raise StopIteration()
+    def execute_task(self, local_state, task):
+        return local_state["session"].request(task["method"], *task["args"], **task["kwargs"])
 
-    def done(self):
-        with self.lock:
-            self.done_at_no = self.last_req_no
-
-    def close(self):
-        for thread in self.threads:
-            # raise ExitThread in every thread
-            ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(thread.ident),
-                ctypes.py_object(ExitThread))
-        with self.lock:
-            # Wake up all waiting threads to handle exception
-            self.thread_cv.notify_all()
-        for thread in self.threads:
-            thread.join()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, type, value, traceback):
-        self.close()
+    def defer_request(self, method, *args, **kwargs):
+        self.defer({ "method": method, "args": args, "kwargs": kwargs })
 
 
 class Session:
@@ -223,18 +164,16 @@ class Session:
                     last_course_synced = False
                 print(" new files for {} {} ".format(course.type, course.name))
 
-                def fetch_and_parse(session, file_id):
-                    r = session.get(folder_url + "&open=" + file_id)
+                for file_id in new_files:
+                    pool.defer_request("GET", folder_url + "&open=" + file_id)
+                pool.done()
+
+                for i, request in enumerate(pool):
                     try:
-                        return parse_file_details(course.id, r.text)
+                        file = parse_file_details(course.id, request.text)
                     except ParserError:
                         raise SessionError("Unable to parse file details")
 
-                for file_id in new_files:
-                    pool.defer(file_id, lambda session, id=file_id: fetch_and_parse(session, id))
-                pool.done()
-
-                for i, (file_id, file) in enumerate(pool):
                     print("Fetched metadata for file {}/{}: ".format(i+1, len(new_files)),
                             end="", flush=True)
                     if file.complete():
