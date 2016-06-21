@@ -10,8 +10,8 @@ class ExitThread(BaseException):
 
 class ThreadPool:
     def __init__(self, n_threads=cpu_count(), local_state={}):
-        self.threads = [ Thread(target=lambda: self.thread_main(deepcopy(local_state)))
-                for _ in range(n_threads) ]
+        self.threads = [ Thread(target=lambda i=i: self.thread_main(i, deepcopy(local_state)))
+                for i in range(n_threads) ]
 
         self.queue = []
         self.results = []
@@ -35,7 +35,8 @@ class ThreadPool:
     def execute_task(self, local_state, task):
         pass
 
-    def thread_main(self, local_state):
+    def thread_main(self, i, local_state):
+        local_state["thread_no"] = i
         self.init_thread(local_state)
         try:
             while True:

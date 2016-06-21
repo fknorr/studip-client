@@ -54,6 +54,7 @@ class Session:
     def __init__(self, config, db, user_name, password, sync_dir):
         self.db = db
         self.server_config = config["server"]
+        self.connection_config = config["connection"]
         self.fs_config = config["filesystem"]
         self.sync_dir = sync_dir
 
@@ -130,7 +131,8 @@ class Session:
         last_course_synced = False
         db_files = self.db.list_files()
 
-        with SessionPool(4, self.http.cookies) as pool:
+        concurrency = int(self.connection_config["update_concurrency"])
+        with SessionPool(concurrency, self.http.cookies) as pool:
             for course in sync_courses:
                 course_url = self.studip_url("/studip/seminar_main.php?auswahl=" + course.id)
                 folder_url = self.studip_url("/studip/folder.php?cid=" + course.id + "&cmd=all")
