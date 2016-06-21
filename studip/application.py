@@ -175,8 +175,8 @@ class Application:
             self.database.commit()
 
 
-    def download_files(self):
-        self.session.download_files()
+    def fetch_files(self):
+        self.session.fetch_files()
 
 
     def clear_cache(self):
@@ -195,7 +195,7 @@ class Application:
             "Usage: {} <operation> <parameters>\n\n"
             "Possible operations:\n"
             "    update        Update course database from Stud.IP\n"
-            "    download      Download missing files from known database\n"
+            "    fetch         Download missing files from known database\n"
             "    sync          <update>, then <download>\n"
             "    clear-cache   Clear local course and file database\n"
             "    help          Show this synopsis\n"
@@ -211,7 +211,7 @@ class Application:
         op = sys.argv[1]
         if op == "help" or op == "--help" or op == "-h":
             op = "help"
-        elif op not in [ "update", "download", "sync", "clear-cache" ]:
+        elif op not in [ "update", "fetch", "sync", "clear-cache" ]:
             return False
         self.command_line["operation"] = op
 
@@ -230,7 +230,7 @@ class Application:
 
         op = self.command_line["operation"]
 
-        if op in [ "update", "download", "sync" ]:
+        if op in [ "update", "fetch", "sync" ]:
             self.configure()
             with self.config:
                 self.open_database()
@@ -239,11 +239,11 @@ class Application:
                 try:
                     if op == "update":
                         self.update_database()
-                    elif op == "download":
-                        self.download_files()
+                    elif op == "fetch":
+                        self.fetch_files()
                     elif op == "sync":
                         self.update_database()
-                        self.download_files()
+                        self.fetch_files()
                 except SessionError as e:
                     sys.stderr.write("\n{}\n".format(e))
                     raise ApplicationExit()

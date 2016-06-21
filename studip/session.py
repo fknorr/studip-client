@@ -183,6 +183,36 @@ class Session:
                         print(" <bad format>")
 
 
+    def fetch_files(self):
+        first_file = True
+        files_dir = path.join(self.sync_dir, ".studip", "files")
+        os.makedirs(files_dir, exist_ok=True)
+
+        for file in self.db.list_files(full=True, select_sync_metadata_only=False,
+                select_sync_no=False):
+
+            file_path = path.join(files_dir, file.id)
+            if not path.isfile(file_path):
+                if first_file:
+                    print()
+                    first_file = False
+                print("Downloading file {}...".format(file.description))
+
+                url = self.studip_url("/studip/sendfile.php?force_download=1&type=0&" \
+                        + urlencode({"file_id": file.id, "file_name": file.name }))
+                try:
+                    r = self.http.get(url)
+                except RequestException as e:
+                    raise SessionError("Unable to download file {}: {}".format(file.name, e))
+
+                with open(file_path, "wb") as writer:
+                    writer.write(r.content)
+                    timestamp = time.mktime(file.created.timetuple())
+
+                os.utime(file_path, (timestamp, timestamp))
+                os.chmod(file_path, 0o444)
+
+
     def download_files(self):
         first_file = True
         modified_folders = set()
