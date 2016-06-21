@@ -7,6 +7,7 @@ from .config import Config
 from .database import Database
 from .util import prompt_choice, encrypt_password, decrypt_password
 from .session import Session, SessionError, LoginError
+from .views import ViewManager
 
 
 class ApplicationExit(BaseException):
@@ -179,6 +180,11 @@ class Application:
         self.session.fetch_files()
 
 
+    def checkout(self):
+        views = ViewManager(self.sync_dir, self.config, self.database)
+        views.checkout()
+
+
     def clear_cache(self):
         try:
             os.remove(self.db_file_name)
@@ -196,7 +202,8 @@ class Application:
             "Possible operations:\n"
             "    update        Update course database from Stud.IP\n"
             "    fetch         Download missing files from known database\n"
-            "    sync          <update>, then <download>\n"
+            "    checkout      Checkout files into views\n"
+            "    sync          <update>, then <fetch>, then <checkout>\n"
             "    clear-cache   Clear local course and file database\n"
             "    help          Show this synopsis\n"
             .format(sys.argv[0]))
@@ -211,7 +218,7 @@ class Application:
         op = sys.argv[1]
         if op == "help" or op == "--help" or op == "-h":
             op = "help"
-        elif op not in [ "update", "fetch", "sync", "clear-cache" ]:
+        elif op not in [ "update", "fetch", "checkout", "sync", "clear-cache" ]:
             return False
         self.command_line["operation"] = op
 
@@ -230,23 +237,28 @@ class Application:
 
         op = self.command_line["operation"]
 
-        if op in [ "update", "fetch", "sync" ]:
+        if op in [ "update", "fetch", "checkout", "sync" ]:
             self.configure()
             with self.config:
                 self.open_database()
-                self.open_session()
 
-                try:
-                    if op == "update":
-                        self.update_database()
-                    elif op == "fetch":
-                        self.fetch_files()
-                    elif op == "sync":
-                        self.update_database()
-                        self.fetch_files()
-                except SessionError as e:
-                    sys.stderr.write("\n{}\n".format(e))
-                    raise ApplicationExit()
+                if op in [ "update", "fetch", "sync" ]:
+                    self.open_session()
+                    try:
+                        if op == "update":
+                            self.update_database()
+                        elif op == "fetch":
+                            self.fetch_files()
+                        elif op == "sync":
+                            self.update_database()
+                            self.fetch_files()
+                            self.checkout()
+                    except SessionError as e:
+                        sys.stderr.write("\n{}\n".format(e))
+                        raise ApplicationExit()
+
+                if op == "checkout":
+                    self.checkout()
 
         elif op == "clear-cache":
             self.clear_cache()
