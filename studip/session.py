@@ -190,16 +190,31 @@ class Session:
 
         path_format = self.config["filesystem", "path_format"]
 
+        fs_escape_mode = self.config["filesystem", "escape"]
+        def fs_escape(str):
+            if fs_escape_mode == "ascii":
+                str = e.sub(r"([:/]|[^\x00-\x7F])+", "_", str)
+            elif fs_escape_mode == "ascii-lower":
+                str = re.sub(r"([:/]|[^\x00-\x7F])+", "_", str).lower()
+            elif fs_escape_mode == "identifier":
+                str = re.sub(r"[^a-zA-Z0-9.]+", "_", str)
+            elif fs_escape_mode == "snake":
+                str = re.sub(r"[^a-zA-Z0-9.]+", "_", str).lower()
+            elif fs_escape_mode == "typeable":
+                str = re.sub("[/:]+", "_", str)
+            else: # fs_escape_mode == "unicode" or incorrectly set
+                # Replace regular '/' by similar looking 'DIVISION SLASH' (U+2215) and ':' by
+                # 'RATIO' to create a valid directory name
+                str = str.replace("/", "\u2215").replace(":", "\u2236")
+            return str.rstrip("_").lstrip("_")
+
         try:
             for file in self.db.list_files(full=True, select_sync_metadata_only=False,
                     select_sync_no=False):
 
-                # Replace regular '/' by 'DIVISION SLASH' (U+2215) to create a valid directory name
-                def unslash(str):
-                    return str.replace("/", "\u2215")
 
                 def make_path(folders):
-                    return path.join(*map(unslash, folders)) if folders else ""
+                    return path.join(*map(fs_escape, folders)) if folders else ""
 
                 descr_no_ext = file.description
                 if descr_no_ext.endswith("." + file.extension):
@@ -212,17 +227,17 @@ class Session:
                 tokens = {
                     "semester": file.course_semester,
                     "course-id": file.course,
-                    "course": unslash(file.course_name),
-                    "type": unslash(file.course_type),
+                    "course": fs_escape(file.course_name),
+                    "type": fs_escape(file.course_type),
                     "path": make_path(file.path),
                     "short-path": make_path(short_path),
                     "id": file.id,
-                    "name": file.name,
-                    "ext": file.extension,
-                    "description": file.description,
-                    "descr-no-ext": descr_no_ext,
-                    "author": file.author,
-                    "time": file.created
+                    "name": fs_escape(file.name),
+                    "ext": fs_escape(file.extension),
+                    "description": fs_escape(file.description),
+                    "descr-no-ext": fs_escape(descr_no_ext),
+                    "author": fs_escape(file.author),
+                    "time": fs_escape(str(file.created))
                 }
 
                 try:

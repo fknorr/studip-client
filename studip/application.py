@@ -87,7 +87,8 @@ class Application:
                 ("server", "studip_base"): "https://studip.uni-passau.de",
                 ("server", "sso_base"): "https://sso.uni-passau.de",
                 ("connection", "update_concurrency"): 4,
-                ("filesystem", "path_format"): "{course} ({type})/{path}/{name}.{ext}"
+                ("filesystem", "path_format"): "{course} ({type})/{path}/{name}.{ext}",
+                ("filesystem", "escape"): "unicode"
             })
 
 
