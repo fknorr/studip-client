@@ -88,7 +88,8 @@ class Application:
                 ("server", "sso_base"): "https://sso.uni-passau.de",
                 ("connection", "update_concurrency"): 4,
                 ("filesystem", "path_format"): "{course} ({type})/{path}/{name}.{ext}",
-                ("filesystem", "escape"): "unicode"
+                ("filesystem", "charset"): "unicode",
+                ("filesystem", "escape"): "similar"
             })
 
 

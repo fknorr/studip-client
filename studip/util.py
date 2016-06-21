@@ -1,4 +1,7 @@
+import re
+
 from base64 import b64encode, b64decode
+
 
 def prompt_choice(prompt, options, default=None):
     choice = None
@@ -45,3 +48,24 @@ def chunks(list, count):
     for i in range(count):
         yield list[offset : offset + chunk_size + (1 if i < modulo else 0)]
 
+
+def escape_file_name(str, charset, mode):
+    if charset in ["ascii", "identifier"]:
+        str = str.replace("ß", "ss").replace("ä", "ae").replace("Ä", "Ae") \
+                .replace("ö", "oe").replace("Ö", "Oe").replace("ü", "ue") \
+                .replace("Ü", "Ue")
+        str = re.sub(r"[^\x00-\x7f]+", "", str)
+    if mode in ["snake", "camel"] or charset == "identifier":
+        parts = re.split(r"[ _/,;:\-_#'+*~!^\"$%&/()[\]}{\\?<>|]+", str)
+        if mode == "snake":
+            return "_".join(parts).lower()
+        elif mode == "camel":
+            return "".join(w.title() for w in parts)
+        else:
+            return "_".join(parts)
+    elif mode == "typeable" or charset in ["ascii", "identifier"]:
+        return re.sub(r"[/:]+", "-" if charset == "ascii" else "_", str)
+    else: # mode == "unicode" or incorrectly set
+        # Replace regular '/' by similar looking 'DIVISION SLASH' (U+2215) and ':' by
+        # 'RATIO' to create a valid directory name
+            return str.replace("/", "\u2215").replace(":", "\u2236")

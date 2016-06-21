@@ -9,7 +9,7 @@ from enum import IntEnum
 
 from .parsers import *
 from .database import SyncMode
-from .util import prompt_choice, ellipsize
+from .util import prompt_choice, ellipsize, escape_file_name
 from .async import ThreadPool
 
 
@@ -191,22 +191,8 @@ class Session:
         path_format = self.config["filesystem", "path_format"]
 
         fs_escape_mode = self.config["filesystem", "escape"]
-        def fs_escape(str):
-            if fs_escape_mode == "ascii":
-                str = e.sub(r"([:/]|[^\x00-\x7F])+", "_", str)
-            elif fs_escape_mode == "ascii-lower":
-                str = re.sub(r"([:/]|[^\x00-\x7F])+", "_", str).lower()
-            elif fs_escape_mode == "identifier":
-                str = re.sub(r"[^a-zA-Z0-9.]+", "_", str)
-            elif fs_escape_mode == "snake":
-                str = re.sub(r"[^a-zA-Z0-9.]+", "_", str).lower()
-            elif fs_escape_mode == "typeable":
-                str = re.sub("[/:]+", "_", str)
-            else: # fs_escape_mode == "unicode" or incorrectly set
-                # Replace regular '/' by similar looking 'DIVISION SLASH' (U+2215) and ':' by
-                # 'RATIO' to create a valid directory name
-                str = str.replace("/", "\u2215").replace(":", "\u2236")
-            return str.rstrip("_").lstrip("_")
+        fs_charset = self.config["filesystem", "charset"]
+        fs_escape = lambda str: escape_file_name(str, fs_charset, fs_escape_mode)
 
         try:
             for file in self.db.list_files(full=True, select_sync_metadata_only=False,
@@ -233,7 +219,7 @@ class Session:
                     "short-path": make_path(short_path),
                     "id": file.id,
                     "name": fs_escape(file.name),
-                    "ext": fs_escape(file.extension),
+                    "ext": file.extension,
                     "description": fs_escape(file.description),
                     "descr-no-ext": fs_escape(descr_no_ext),
                     "author": fs_escape(file.author),
