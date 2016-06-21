@@ -1,12 +1,16 @@
-import os, time
+import os, time, threading, ctypes
 
 from requests import session, RequestException, Timeout
 from urllib.parse import urlencode
 from os import path
+from threading import Thread, Condition, Lock
+from copy import deepcopy
+from enum import IntEnum
 
 from .parsers import *
 from .database import SyncMode
 from .util import prompt_choice, ellipsize
+from .async import ThreadPool
 
 
 class SessionError(Exception):
@@ -20,6 +24,25 @@ def raise_fetch_error(page, e):
     raise SessionError("Unable to fetch {}: {}".format(page, str(e)))
 
 
+class SessionPool(ThreadPool):
+    def __init__(self, n_threads, cookies):
+        super().__init__(n_threads, { "cookies": cookies })
+
+    def init_thread(self, local_state):
+        session = requests.session()
+        session.cookies = local_state["cookies"]
+        local_state["session"] = session
+
+    def cleanup_thread(self, local_state):
+        local_state["session"].close()
+
+    def execute_task(self, local_state, task):
+        return local_state["session"].request(task["method"], *task["args"], **task["kwargs"])
+
+    def defer_request(self, method, *args, **kwargs):
+        self.defer({ "method": method, "args": args, "kwargs": kwargs })
+
+
 class Session:
     def sso_url(self, url):
         return self.server_config["sso_base"] + url
@@ -31,6 +54,7 @@ class Session:
     def __init__(self, config, db, user_name, password, sync_dir):
         self.db = db
         self.server_config = config["server"]
+        self.connection_config = config["connection"]
         self.fs_config = config["filesystem"]
         self.sync_dir = sync_dir
 
@@ -106,59 +130,59 @@ class Session:
         sync_courses = self.db.list_courses(full=True, select_sync_no=False)
         last_course_synced = False
         db_files = self.db.list_files()
-        for course in sync_courses:
-            course_url = self.studip_url("/studip/seminar_main.php?auswahl=" + course.id)
-            folder_url = self.studip_url("/studip/folder.php?cid=" + course.id + "&cmd=all")
 
-            try:
-                self.http.get(course_url, timeout=(None, 0))
-            except (KeyboardInterrupt, SystemExit):
-                raise
-            except Timeout:
-                pass
-            except RequestException as e:
-                raise SessionError("Unable to set course: {}".format(str(e)))
+        concurrency = int(self.connection_config["update_concurrency"])
+        with SessionPool(concurrency, self.http.cookies) as pool:
+            for course in sync_courses:
+                course_url = self.studip_url("/studip/seminar_main.php?auswahl=" + course.id)
+                folder_url = self.studip_url("/studip/folder.php?cid=" + course.id + "&cmd=all")
 
-            r = self.http.get(folder_url)
-            try:
-                file_list = parse_file_list(r.text)
-            except ParserError:
-                raise SessionError("Unable to parse file list")
-
-            if last_course_synced:
-                print()
-
-            new_files = [ file_id for file_id in file_list if file_id not in db_files ]
-            if len(new_files) > 0 :
-                if not last_course_synced:
-                    print()
-                print(len(new_files), end="")
-                last_course_synced = True
-            else:
-                print("No", end="")
-                last_course_synced = False
-            print(" new files for {} {} ".format(course.type, course.name))
-
-            for i, file_id in enumerate(new_files):
-                print("Fetching metadata for file {}/{}...".format(i+1, len(new_files)),
-                        end="", flush=True)
-
-                open_url = folder_url + "&open=" + file_id
                 try:
-                    r = self.http.get(open_url)
+                    self.http.get(course_url, timeout=(None, 0))
+                except (KeyboardInterrupt, SystemExit):
+                    raise
+                except Timeout:
+                    pass
                 except RequestException as e:
-                    raise_fetch_error("overview page", e)
+                    raise SessionError("Unable to set course: {}".format(str(e)))
 
+                r = self.http.get(folder_url)
                 try:
-                    file = parse_file_details(course.id, r.text)
+                    file_list = parse_file_list(r.text)
                 except ParserError:
-                    raise SessionError("Unable to parse file details")
+                    raise SessionError("Unable to parse file list")
 
-                if file.complete():
-                    self.db.add_file(file)
-                    print(" " + file.description)
+                if last_course_synced:
+                    print()
+
+                new_files = [ file_id for file_id in file_list if file_id not in db_files ]
+                if len(new_files) > 0 :
+                    if not last_course_synced:
+                        print()
+                    print(len(new_files), end="")
+                    last_course_synced = True
                 else:
-                    print(" <bad format>")
+                    print("No", end="")
+                    last_course_synced = False
+                print(" new files for {} {} ".format(course.type, course.name))
+
+                for file_id in new_files:
+                    pool.defer_request("GET", folder_url + "&open=" + file_id)
+                pool.done()
+
+                for i, request in enumerate(pool):
+                    try:
+                        file = parse_file_details(course.id, request.text)
+                    except ParserError:
+                        raise SessionError("Unable to parse file details")
+
+                    print("Fetched metadata for file {}/{}: ".format(i+1, len(new_files)),
+                            end="", flush=True)
+                    if file.complete():
+                        self.db.add_file(file)
+                        print(" " + file.description)
+                    else:
+                        print(" <bad format>")
 
 
     def download_files(self):

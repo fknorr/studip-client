@@ -37,3 +37,11 @@ def decrypt_password(secret, crypt):
 def compact(str):
     return " ".join(str.split())
 
+
+def chunks(list, count):
+    chunk_size = len(list) // count
+    modulo = len(list) % count
+    offset = 0
+    for i in range(count):
+        yield list[offset : offset + chunk_size + (1 if i < modulo else 0)]
+

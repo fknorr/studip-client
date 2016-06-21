@@ -98,6 +98,9 @@ class Application:
             "studip_base" : "https://studip.uni-passau.de",
             "sso_base" : "https://sso.uni-passau.de"
         }
+        self.config["connection"] = {
+            "update_concurrency": "4"
+        }
         self.config["filesystem"] = {
             "path_format": "{course} ({type})/{path}/{name}.{ext}"
         }
