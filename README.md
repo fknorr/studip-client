@@ -100,6 +100,23 @@ At the moment, the only way to modify _studip-client_'s configuration is by edit
       {time}            Time of creation
       ```
 
+    - `charset`: The class of allowed characters in a file or folder name. Characters which are not
+      in this class are substituted or removed.
+
+      ```
+      unicode           All unicode characters except / and : are permitted
+      ascii             Only ASCII (<= 0x7f) characters are preserved
+      identifier        All characters but [A-Za-z0-9_] are removed
+      ```
+
+    - `escape`: Specifies how the path should be encoded to remove invalid characters.
+
+      ```
+      similar           Replace : and / with similar looking characters
+      camel             FilesAndFolders/AreTransformedToCamelCase/WhileRemoving.punctuation
+      snake             special_chars/are_replaced_by_underscores/characters_are.lowercase
+      ```
+
 - `user`: Login credentials. The password will be encrypted with `~/.cache/studip/secret` as the
   key, which means it cannot be edited directly.
 

@@ -56,7 +56,7 @@ def escape_file_name(str, charset, mode):
                 .replace("Ü", "Ue")
         str = re.sub(r"[^\x00-\x7f]+", "", str)
     if mode in ["snake", "camel"] or charset == "identifier":
-        parts = re.split(r"[ _/,;:\-_#'+*~!^\"$%&/()[\]}{\\?<>|]+", str)
+        parts = re.split(r"[ _/.,;:\-_#'+*~!^\"$%&/()[\]}{\\?<>|]+", str)
         if mode == "snake":
             return "_".join(parts).lower()
         elif mode == "camel":
