@@ -45,17 +45,15 @@ class SessionPool(ThreadPool):
 
 class Session:
     def sso_url(self, url):
-        return self.server_config["sso_base"] + url
+        return self.config["server", "sso_base"] + url
 
     def studip_url(self, url):
-        return self.server_config["studip_base"] + url
+        return self.config["server", "studip_base"] + url
 
 
     def __init__(self, config, db, user_name, password, sync_dir):
         self.db = db
-        self.server_config = config["server"]
-        self.connection_config = config["connection"]
-        self.fs_config = config["filesystem"]
+        self.config = config
         self.sync_dir = sync_dir
 
         self.http = requests.session()
@@ -131,7 +129,7 @@ class Session:
         last_course_synced = False
         db_files = self.db.list_files()
 
-        concurrency = int(self.connection_config["update_concurrency"])
+        concurrency = int(self.config["connection", "update_concurrency"])
         with SessionPool(concurrency, self.http.cookies) as pool:
             for course in sync_courses:
                 course_url = self.studip_url("/studip/seminar_main.php?auswahl=" + course.id)
@@ -190,7 +188,7 @@ class Session:
         modified_folders = set()
         copyrighted_files = []
 
-        path_format = self.fs_config["path_format"]
+        path_format = self.config["filesystem", "path_format"]
 
         try:
             for file in self.db.list_files(full=True, select_sync_metadata_only=False,

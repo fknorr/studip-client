@@ -1,10 +1,9 @@
 import os, sys, appdirs
 
 from getpass import getpass
-from errno import ENOENT
-from configparser import ConfigParser
 from base64 import b64encode, b64decode
 
+from .config import Config
 from .database import Database
 from .util import prompt_choice, encrypt_password, decrypt_password
 from .session import Session, SessionError, LoginError
@@ -83,40 +82,16 @@ class Application:
         self.db_file_name = os.path.join(dot_dir, "cache.sqlite")
 
 
-    def save_config(self):
-        try:
-            with open(self.config_file_name, "w", encoding="utf-8") as file:
-                self.config.write(file)
-        except Exception as e:
-            self.print_io_error("Unable to write to", self.config_file_name, e)
-            raise ApplicationExit()
-
-
     def configure(self):
-        self.config = ConfigParser()
-        self.config["server"] = {
-            "studip_base" : "https://studip.uni-passau.de",
-            "sso_base" : "https://sso.uni-passau.de"
-        }
-        self.config["connection"] = {
-            "update_concurrency": "4"
-        }
-        self.config["filesystem"] = {
-            "path_format": "{course} ({type})/{path}/{name}.{ext}"
-        }
-        self.config["user"] = {}
-
-        try:
-            with open(self.config_file_name, "r", encoding="utf-8") as file:
-                self.config.read_file(file)
-        except Exception as e:
-            if not (isinstance(e, IOError) and e.errno == ENOENT):
-                self.print_io_error("Unable to read configuration from", config_file_name, e)
-                sys.stderr.write("Starting over with a fresh configuration\n")
+        self.config = Config(self.config_file_name, {
+                ("server", "studip_base"): "https://studip.uni-passau.de",
+                ("server", "sso_base"): "https://sso.uni-passau.de",
+                ("connection", "update_concurrency"): 4,
+                ("filesystem", "path_format"): "{course} ({type})/{path}/{name}.{ext}"
+            })
 
 
     def open_session(self):
-        user_config = self.config["user"]
         login_changed = False
 
         user_secret_file_name = os.path.join(self.cache_dir, "secret")
@@ -131,8 +106,8 @@ class Application:
                         file.write(b64encode(user_secret) + b"\n")
 
                     # Any stored password is useless without a secret file
-                    if "password" in user_config:
-                        del user_config["password"]
+                    if ("user", "password") in self.config:
+                        del self.config["user", "password"]
                 else:
                     raise
         except Exception as e:
@@ -141,10 +116,10 @@ class Application:
 
         password = None
         user_name = None
-        if "user_name" in user_config:
-            user_name = user_config["user_name"]
-        if "password" in user_config:
-            password = decrypt_password(user_secret, user_config["password"])
+        if ("user", "user_name") in self.config:
+            user_name = self.config["user", "user_name"]
+        if ("user", "password") in self.config:
+            password = decrypt_password(user_secret, self.config["user", "password"])
 
         while True:
             if user_name is None:
@@ -167,20 +142,19 @@ class Application:
                 break
 
         if login_changed:
-            if "save_login" in user_config and user_config["save_login"][0] in "ynu":
-                save_login = user_config["save_login"][0]
+            if ("user", "save_login") in self.config \
+                    and self.config["user", "save_login"][0] in "ynu":
+                save_login = self.config["user", "save_login"][0]
             else:
                 save_login = prompt_choice("Save login? ([Y]es, [n]o, [u]ser name only)", "ynu",
                         default="y")
-                user_config["save_login"] = { "y" : "yes", "n" : "no", "u" : "user name only" }[
-                        save_login]
+                self.config["user", "save_login"] \
+                        = { "y" : "yes", "n" : "no", "u" : "user name only" }[save_login]
 
             if save_login in "yu":
-                user_config["user_name"] = user_name
+                self.config["user", "user_name"] = user_name
             if save_login == "y":
-                user_config["password"] = encrypt_password(user_secret, password)
-
-            self.save_config()
+                self.config["user", "password"] = encrypt_password(user_secret, password)
 
 
     def open_database(self):
@@ -251,25 +225,26 @@ class Application:
             raise ApplicationExit()
 
         self.setup_sync_dir()
-        self.configure()
 
         op = self.command_line["operation"]
 
         if op in [ "update", "download", "sync" ]:
-            self.open_database()
-            self.open_session()
+            self.configure()
+            with self.config:
+                self.open_database()
+                self.open_session()
 
-            try:
-                if op == "update":
-                    self.update_database()
-                elif op == "download":
-                    self.download_files()
-                elif op == "sync":
-                    self.update_database()
-                    self.download_files()
-            except SessionError as e:
-                sys.stderr.write("\n{}\n".format(e))
-                raise ApplicationExit()
+                try:
+                    if op == "update":
+                        self.update_database()
+                    elif op == "download":
+                        self.download_files()
+                    elif op == "sync":
+                        self.update_database()
+                        self.download_files()
+                except SessionError as e:
+                    sys.stderr.write("\n{}\n".format(e))
+                    raise ApplicationExit()
 
         elif op == "clear-cache":
             self.clear_cache()
