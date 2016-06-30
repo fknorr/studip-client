@@ -1,6 +1,7 @@
 import re
 
 from base64 import b64encode, b64decode
+from enum import IntEnum
 
 
 def prompt_choice(prompt, options, default=None):
@@ -49,22 +50,25 @@ def chunks(list, count):
         yield list[offset : offset + chunk_size + (1 if i < modulo else 0)]
 
 
+EscapeMode = IntEnum("EscapeMode", "Similar Typeable CamelCase SnakeCase")
+Charset = IntEnum("Charset", "Unicode Ascii Identifier")
+
 def escape_file_name(str, charset, mode):
-    if charset in ["ascii", "identifier"]:
+    if charset in [Charset.Ascii, Charset.Identifier]:
         str = str.replace("ß", "ss").replace("ä", "ae").replace("Ä", "Ae") \
                 .replace("ö", "oe").replace("Ö", "Oe").replace("ü", "ue") \
                 .replace("Ü", "Ue")
         str = re.sub(r"[^\x00-\x7f]+", "", str)
-    if mode in ["snake", "camel"] or charset == "identifier":
+    if mode in [EscapeMode.SnakeCase, EscapeMode.CamelCase] or charset == Charset.Identifier:
         parts = re.split(r"[ _/.,;:\-_#'+*~!^\"$%&/()[\]}{\\?<>|]+", str)
-        if mode == "snake":
+        if mode == EscapeMode.SnakeCase:
             return "_".join(parts).lower()
-        elif mode == "camel":
+        elif mode == EscapeMode.CamelCase:
             return "".join(w.title() for w in parts)
         else:
             return "_".join(parts)
-    elif mode == "typeable" or charset in ["ascii", "identifier"]:
-        return re.sub(r"[/:]+", "-" if charset == "ascii" else "_", str)
+    elif mode == EscapeMode.Typeable or charset in [Charset.Ascii, Charset.Identifier]:
+        return re.sub(r"[/:]+", "-" if charset == Charset.Ascii else "_", str)
     else: # mode == "unicode" or incorrectly set
         # Replace regular '/' by similar looking 'DIVISION SLASH' (U+2215) and ':' by
         # 'RATIO' to create a valid directory name

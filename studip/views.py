@@ -5,23 +5,19 @@ from os import path
 from .util import ellipsize, escape_file_name
 
 
-class ViewManager:
+class ViewSynchronizer:
     def __init__(self, sync_dir, config, db):
         self.sync_dir = sync_dir
         self.config = config
         self.db = db
 
-    def checkout(self):
+    def checkout(self, view):
         first_file = True
         files_dir = path.join(self.sync_dir, ".studip", "files")
         modified_folders = set()
         copyrighted_files = []
 
-        path_format = self.config["filesystem", "path_format"]
-
-        fs_escape_mode = self.config["filesystem", "escape"]
-        fs_charset = self.config["filesystem", "charset"]
-        fs_escape = lambda str: escape_file_name(str, fs_charset, fs_escape_mode)
+        fs_escape = lambda str: escape_file_name(str, view.charset, view.escape)
 
         existing_files = [file for file in self.db.list_files(full=True,
                 select_sync_metadata_only=False, select_sync_no=False)
@@ -57,7 +53,7 @@ class ViewManager:
                 }
 
                 try:
-                    rel_path = path_format.format(**tokens)
+                    rel_path = view.format.format(**tokens)
                 except Exception:
                     raise SessionError("Invalid path format: " + path_format)
 

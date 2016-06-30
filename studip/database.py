@@ -1,6 +1,7 @@
 import sqlite3, os, ast
 from enum import IntEnum
 
+from .util import EscapeMode, Charset
 
 SyncMode = IntEnum("SyncMode", "NoSync Metadata Full")
 
@@ -60,12 +61,27 @@ class Folder:
         return self.id and self.name and (self.parent or self.course)
 
 
+
+
+class View:
+    def __init__(self, id, name="view", format=None, escape=EscapeMode.Similar,
+            charset=Charset.Unicode):
+        self.id = id
+        self.name = name
+        self.format = format
+        self.escape = escape
+        self.charset = charset
+
+    def complete(self):
+        return self.id and self.format and self.escape and self.charset
+
+
 class QueryError(Exception):
     pass
 
 
 class Database:
-    schema_version = 5
+    schema_version = 6
 
     def __init__(self, file_name):
         def connect(self):
@@ -231,6 +247,39 @@ class Database:
                 VALUES (:id, :par, :name, :ext, :auth, :descr, :creat, :copy);
             """, id=file.id, par=parent, name=file.name, ext=file.extension, auth=file.author,
                 descr=file.description, creat=file.created, copy=file.copyrighted, expected_rows=0)
+
+
+    def list_views(self, full=False):
+        if full:
+            rows = self.query("""
+                    SELECT id, name, format, esc_mode, charset
+                    FROM views
+                """)
+            return [ View(i, n, f, EscapeMode(e), Charset(c)) for i, n, f, e, c in rows ]
+        else:
+            rows = self.query("""
+                    SELECT id
+                    FROM views
+                """)
+            return [ id for id, in rows ]
+
+
+    def get_view_details(self, id):
+        rows = self.query("""
+                SELECT name, format, esc_mode, charset
+                FROM views
+                WHERE id = :id
+            """, id=id, expected_rows=1)
+        n, f, e, c = rows[0]
+        return View(id, n, f, EscapeMode(e), Charset(c))
+
+
+    def add_view(self, view):
+        self.query("""
+                INSERT INTO views (id, name, format, esc_mode, charset)
+                VALUES (:id, :name, :fmt, :esc, :char)
+            """, id=view.id, name=view.name, fmt=view.format, esc=view.escape, char=view.charset,
+            expected_rows=0)
 
 
     def commit(self):

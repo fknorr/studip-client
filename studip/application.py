@@ -4,10 +4,10 @@ from getpass import getpass
 from base64 import b64encode, b64decode
 
 from .config import Config
-from .database import Database
-from .util import prompt_choice, encrypt_password, decrypt_password
+from .database import Database, View
+from .util import prompt_choice, encrypt_password, decrypt_password, Charset, EscapeMode
 from .session import Session, SessionError, LoginError
-from .views import ViewManager
+from .views import ViewSynchronizer
 
 
 class ApplicationExit(BaseException):
@@ -87,10 +87,7 @@ class Application:
         self.config = Config(self.config_file_name, {
                 ("server", "studip_base"): "https://studip.uni-passau.de",
                 ("server", "sso_base"): "https://sso.uni-passau.de",
-                ("connection", "update_concurrency"): 4,
-                ("filesystem", "path_format"): "{course} ({type})/{path}/{name}.{ext}",
-                ("filesystem", "charset"): "unicode",
-                ("filesystem", "escape"): "similar"
+                ("connection", "update_concurrency"): 4
             })
 
 
@@ -180,9 +177,20 @@ class Application:
         self.session.fetch_files()
 
 
+    def setup_views(self):
+        existing_views = self.database.list_views(full=True)
+        if existing_views:
+            self.default_view = existing_views[0]
+        else:
+            self.default_view = View(id=0, name="default view",
+                    format="{course} ({type})/{path}/{name}.{ext}", escape=EscapeMode.Similar,
+                    charset=Charset.Unicode)
+            self.database.add_view(self.default_view)
+
+
     def checkout(self):
-        views = ViewManager(self.sync_dir, self.config, self.database)
-        views.checkout()
+        views = ViewSynchronizer(self.sync_dir, self.config, self.database)
+        views.checkout(self.default_view)
 
 
     def clear_cache(self):
@@ -250,6 +258,7 @@ class Application:
                         elif op == "fetch":
                             self.fetch_files()
                         elif op == "sync":
+                            self.setup_views()
                             self.update_database()
                             self.fetch_files()
                             self.checkout()
@@ -258,6 +267,7 @@ class Application:
                         raise ApplicationExit()
 
                 if op == "checkout":
+                    self.setup_views()
                     self.checkout()
 
         elif op == "clear-cache":

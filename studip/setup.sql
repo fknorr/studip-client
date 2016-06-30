@@ -1,3 +1,12 @@
+CREATE TABLE IF NOT EXISTS views (
+    id INTEGER NOT NULL,
+    name VARCHAR(30) DEFAULT "view",
+    format VARCHAR(200) NOT NULL,
+    esc_mode SMALLINT NOT NULL DEFAULT 0,
+    charset SMALLINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (id asc)
+);
+
 CREATE TABLE IF NOT EXISTS semesters (
     id CHAR(32) NOT NULL,
     name VARCHAR(16) NOT NULL,
