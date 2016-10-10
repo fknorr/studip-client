@@ -204,6 +204,10 @@ class Application:
         print("Cache cleared.")
 
 
+    def edit_views(self):
+        print("Views!!")
+
+
     def show_usage(self, out):
         out.write(
             "Usage: {} <operation> <parameters>\n\n"
@@ -213,7 +217,10 @@ class Application:
             "    checkout      Checkout files into views\n"
             "    sync          <update>, then <fetch>, then <checkout>\n"
             "    clear-cache   Clear local course and file database\n"
-            "    help          Show this synopsis\n"
+            "    wiews <...>   Edit views\n"
+            "    help          Show this synopsis\n\n"
+            "Possible parameters:\n"
+            "    -d <dir>      Sync directory, assuming most recent one if not given\n"
             .format(sys.argv[0]))
 
 
@@ -223,16 +230,38 @@ class Application:
 
         self.command_line = {}
 
+        args = sys.argv[1:]
         op = sys.argv[1]
-        if op == "help" or op == "--help" or op == "-h":
+        plain = []
+        if op == "help" or "--help" in args or "-h" in args:
             op = "help"
-        elif op not in [ "update", "fetch", "checkout", "sync", "clear-cache" ]:
+        elif op in [ "update", "fetch", "checkout", "sync", "clear-cache", "views" ]:
+            i = 1
+            while i < len(args):
+                if args[i].startswith("-"):
+                    if args[i] == "-d" and i < len(args)-1:
+                        self.command_line["sync_dir"] = args[i+1]
+                        i += 1
+                    else:
+                        return False
+                else:
+                    plain.append(args[i])
+                i += 1
+            if op in [ "update", "fetch", "checkout", "sync", "clear-cache" ]:
+                if len(plain) > 0:
+                    return False
+            elif op in [ "views" ]:
+                if len(plain) < 1:
+                    return False
+                else:
+                    self.command_line["views_op"] = plain[0]
+        else:
             return False
+
         self.command_line["operation"] = op
 
-        if len(sys.argv) >= 3:
-            self.command_line["sync_dir"] = sys.argv[2]
-
+        print(self.command_line)
+        sys.exit(1)
         return True
 
 
@@ -266,9 +295,11 @@ class Application:
                         sys.stderr.write("\n{}\n".format(e))
                         raise ApplicationExit()
 
-                if op == "checkout":
+                elif op == "checkout":
                     self.setup_views()
                     self.checkout()
+                elif op == "view":
+                    self.edit_views()
 
         elif op == "clear-cache":
             self.clear_cache()
