@@ -145,7 +145,7 @@ class Session:
                 folder_url = self.studip_url("/studip/folder.php?cid=" + course.id + "&cmd=all")
 
                 try:
-                    self.http.get(course_url, timeout=(None, 0))
+                    self.http.get(course_url, timeout=(None, 0.001))
                 except (KeyboardInterrupt, SystemExit):
                     raise
                 except Timeout:
