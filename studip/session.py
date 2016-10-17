@@ -59,16 +59,25 @@ class Session:
         self.http = requests.session()
 
         try:
-            self.http.get(self.studip_url("/studip/index.php?again=yes&sso=shib"))
+            r = self.http.get(self.studip_url("/studip/index.php?again=yes&sso=shib"))
         except RequestException as e:
             raise_fetch_error("login page", e)
 
         try:
-            r = self.http.post(self.sso_url("/idp/Authn/UserPassword"), data = {
-                "j_username": user_name,
-                "j_password": password,
-                "uApprove.consent-revocation": ""
-            })
+            form_data = parse_login_form(r.text)
+        except ParserError:
+            raise LoginError("Error parsing login page")
+
+        try:
+            r = self.http.post(
+                    self.sso_url(form_data.post_url),
+                    data = {
+                        "j_username": user_name,
+                        "j_password": password,
+                        "uApprove.consent-revocation": "",
+                        "_eventId_proceed": ""
+                    }
+                )
         except RequestException as e:
             raise_fetch_error("login confirmation page", e)
 
