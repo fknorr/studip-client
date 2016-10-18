@@ -147,7 +147,7 @@ class ViewSynchronizer:
                 pass
 
 
-    def remove(self, view, force=False):
+    def remove(self, view):
         view_dir = path.join(self.sync_dir, view.base if view.base else "")
 
         # Remove our files, mark directories containing foreign files

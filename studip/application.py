@@ -277,7 +277,7 @@ class Application:
                     ))
             else: # view_op == "rm"
                 view_sync = ViewSynchronizer(self.sync_dir, self.config, self.database)
-                view_sync.remove(view, force = "force" in self.command_line)
+                view_sync.remove(view)
                 self.database.remove_view(view.id)
 
         self.database.commit()
@@ -318,8 +318,6 @@ class Application:
             i = 1
             while i < len(args):
                 if args[i].startswith("-"):
-                    if args[i] == "-f":
-                        self.command_line["force"] = True
                     if args[i] == "-d" and i < len(args)-1:
                         self.command_line["sync_dir"] = args[i+1]
                         i += 1
@@ -351,9 +349,6 @@ class Application:
                     else:
                         return False
         else:
-            return False
-
-        if "force" in self.command_line and (op != view or view_op != "rm"):
             return False
 
         self.command_line["operation"] = op
