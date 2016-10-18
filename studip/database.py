@@ -64,8 +64,8 @@ class Folder:
 
 
 class View:
-    def __init__(self, id, name="view", format=None, escape=EscapeMode.Similar,
-            charset=Charset.Unicode):
+    def __init__(self, id, name="view", format="{course} ({type})/{path}/{name}.{ext}",
+            escape=EscapeMode.Similar, charset=Charset.Unicode):
         self.id = id
         self.name = name
         self.format = format
@@ -281,6 +281,11 @@ class Database:
             """, id=view.id, name=view.name, fmt=view.format, esc=view.escape, char=view.charset,
             expected_rows=0)
 
+    def remove_view(self, id):
+        self.query("""
+                DELETE FROM views
+                WHERE id=:id
+            """, id=id, expected_rows=0)
 
     def commit(self):
         self.conn.commit()

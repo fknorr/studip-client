@@ -137,3 +137,8 @@ class ViewSynchronizer:
                 print("Created folder for empty {} {}".format(course.type, course.name))
             except OSError: # Folder already exists
                 pass
+
+
+    def remove(self, view, force=False):
+        self.db.remove_view(view.id)
+

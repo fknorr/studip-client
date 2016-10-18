@@ -5,7 +5,7 @@ from base64 import b64encode, b64decode
 from errno import ENOENT
 
 from .config import Config
-from .database import Database, View
+from .database import Database, View, QueryError
 from .util import prompt_choice, encrypt_password, decrypt_password, Charset, EscapeMode
 from .session import Session, SessionError, LoginError
 from .views import ViewSynchronizer
@@ -179,19 +179,14 @@ class Application:
 
 
     def setup_views(self):
-        existing_views = self.database.list_views(full=True)
-        if existing_views:
-            self.default_view = existing_views[0]
-        else:
-            self.default_view = View(id=0, name="default view",
-                    format="{course} ({type})/{path}/{name}.{ext}", escape=EscapeMode.Similar,
-                    charset=Charset.Unicode)
-            self.database.add_view(self.default_view)
+        if not self.database.list_views():
+            self.database.add_view(View(id=0, name="default"))
 
 
     def checkout(self):
-        views = ViewSynchronizer(self.sync_dir, self.config, self.database)
-        views.checkout(self.default_view)
+        sync = ViewSynchronizer(self.sync_dir, self.config, self.database)
+        for view in self.database.list_views(full=True):
+            sync.checkout(view)
 
 
     def clear_cache(self):
@@ -206,27 +201,99 @@ class Application:
 
 
     def edit_views(self):
-        print("Views!!")
+        views = self.database.list_views(full=True)
+
+        view_op = self.command_line["view_op"]
+        if view_op == "show" and "view_name" not in self.command_line:
+            print("\n".join(v.name for v in views))
+            return
+
+        matching_views = [v for v in views if v.name == self.command_line["view_name"]]
+
+        if view_op == "add" and matching_views or view_op != "add" and not matching_views:
+            fmt = "{}: no such view\n" if view_op != "add" else "{}: view already exists\n"
+            sys.stderr.write(fmt.format(self.command_line["view_name"]))
+            raise ApplicationExit()
+
+        if view_op == "add":
+            id = max(v.id for v in views) + 1
+            view = View(id, self.command_line["view_name"])
+            for key, value in self.command_line["view_sets"]:
+                if key == "format":
+                    view.format = value
+                elif key == "escape":
+                    try:
+                        view.escape = {
+                            "similar": EscapeMode.Similar,
+                            "typeable": EscapeMode.Typeable,
+                            "camel": EscapeMode.CamelCase,
+                            "snake": EscapeMode.SnakeCase
+                        }[value];
+                    except:
+                        sys.stderr.write("No such escape mode: {}\n".format(value))
+                        raise ApplicationExit
+                elif key == "charset":
+                    try:
+                        view.escape = {
+                            "unicode": EscapeMode.Unicode,
+                            "ascii": EscapeMode.Ascii,
+                            "identifier": EscapeMode.Identifier
+                        }[value];
+                    except:
+                        sys.stderr.write("No such charset: {}\n".format(value))
+                        raise ApplicationExit
+                else:
+                    sys.stderr.write("Unknown key \"{}\"\n".format(key))
+                    raise ApplicationExit
+            self.database.add_view(view)
+            self.database.commit()
+        else:
+            view = matching_views[0]
+            if view_op == "show":
+                print(
+                    "format: \"{}\"\n"
+                    "escape: {}\n"
+                    "charset: {}".format(
+                        view.format,
+                        {
+                            EscapeMode.Similar: "similar",
+                            EscapeMode.Typeable: "typeable",
+                            EscapeMode.CamelCase: "camel",
+                            EscapeMode.SnakeCase: "snake"
+                        }[view.escape],
+                        {
+                            Charset.Unicode: "unicode",
+                            Charset.Ascii: "ascii",
+                            Charset.Identifier: "Identifier"
+                        }[view.charset]
+                    ))
+            else: # view_op == "rm"
+                view_sync = ViewSynchronizer(self.sync_dir, self.config, self.database)
+                view_sync.remove(view, force = "force" in self.command_line)
 
 
     def show_usage(self, out):
         out.write(
             "Usage: {} <operation> <parameters>\n\n"
-            "Possible operations:\n"
+            "Synchronization operations:\n"
             "    update        Update course database from Stud.IP\n"
             "    fetch         Download missing files from known database\n"
             "    checkout      Checkout files into views\n"
             "    sync          <update>, then <fetch>, then <checkout>\n"
             "    clear-cache   Clear local course and file database\n"
-            "    wiews <...>   Edit views\n"
+            "    view <...>    Show and modify views\n"
             "    help          Show this synopsis\n\n"
-            "Possible parameters:\n"
+            "Commands for showing and modifying views:\n"
+            "    view show [<name>]\n"
+            "    view add <name> [<key> <value>]...\n"
+            "    view rm [-f] <name>\n\n"
+            "Possible global parameters:\n"
             "    -d <dir>      Sync directory, assuming most recent one if not given\n"
             .format(sys.argv[0]))
 
 
     def parse_command_line(self):
-        if len(sys.argv) < 2 or len(sys.argv) > 3:
+        if len(sys.argv) < 2:
             return False
 
         self.command_line = {}
@@ -236,10 +303,12 @@ class Application:
         plain = []
         if op == "help" or "--help" in args or "-h" in args:
             op = "help"
-        elif op in [ "update", "fetch", "checkout", "sync", "clear-cache", "views" ]:
+        elif op in [ "update", "fetch", "checkout", "sync", "clear-cache", "view" ]:
             i = 1
             while i < len(args):
                 if args[i].startswith("-"):
+                    if args[i] == "-f":
+                        self.command_line["force"] = True
                     if args[i] == "-d" and i < len(args)-1:
                         self.command_line["sync_dir"] = args[i+1]
                         i += 1
@@ -251,12 +320,29 @@ class Application:
             if op in [ "update", "fetch", "checkout", "sync", "clear-cache" ]:
                 if len(plain) > 0:
                     return False
-            elif op in [ "views" ]:
+            elif op in [ "view" ]:
                 if len(plain) < 1:
                     return False
                 else:
-                    self.command_line["views_op"] = plain[0]
+                    self.command_line["view_op"] = view_op = plain[0]
+                    if view_op in [ "show", "add", "rm" ]:
+                        if len(plain) > 1:
+                            self.command_line["view_name"] = plain[1]
+                        elif view_op != "show":
+                            return False
+                        if len(plain) > 2:
+                            self.command_line["view_sets"] = []
+                            if view_op == "add" and len(plain) % 2 == 0:
+                                for i in range(2, len(plain), 2):
+                                    self.command_line["view_sets"].append((plain[i], plain[i+1]))
+                            else:
+                                return False
+                    else:
+                        return False
         else:
+            return False
+
+        if "force" in self.command_line and (op != view or view_op != "rm"):
             return False
 
         self.command_line["operation"] = op
@@ -272,10 +358,11 @@ class Application:
 
         op = self.command_line["operation"]
 
-        if op in [ "update", "fetch", "checkout", "sync" ]:
+        if op in [ "update", "fetch", "checkout", "sync", "view" ]:
             self.configure()
             with self.config:
                 self.open_database()
+                self.setup_views()
 
                 if op in [ "update", "fetch", "sync" ]:
                     self.open_session()
@@ -285,7 +372,6 @@ class Application:
                         elif op == "fetch":
                             self.fetch_files()
                         elif op == "sync":
-                            self.setup_views()
                             self.update_database()
                             self.fetch_files()
                             self.checkout()
