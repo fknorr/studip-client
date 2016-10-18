@@ -203,6 +203,13 @@ class Session:
         fs_charset = self.config["filesystem", "charset"]
         fs_escape = lambda str: escape_file_name(str, fs_charset, fs_escape_mode)
 
+        def format_path(tokens):
+            try:
+                return path_format.format(**tokens)
+            except Exception:
+                raise SessionError("Invalid path format: " + path_format)
+
+        # Check-out files, creating any parent folders
         try:
             for file in self.db.list_files(full=True, select_sync_metadata_only=False,
                     select_sync_no=False):
@@ -235,10 +242,7 @@ class Session:
                     "time": fs_escape(str(file.created))
                 }
 
-                try:
-                    rel_path = path_format.format(**tokens)
-                except Exception:
-                    raise SessionError("Invalid path format: " + path_format)
+                rel_path = format_path(tokens)
 
                 # First update modified_folders, then create directories.
                 folder = path.dirname(rel_path)
@@ -299,3 +303,32 @@ class Session:
                 print("\nPlease make sure you have looked up, read and understood the terms and"
                         " conditions of these files before proceeding to use them.")
                 print("-"*80 + "\n")
+
+        # Create course folders for all courses that do not have files yet
+        for course in self.db.list_courses(full=True, select_sync_metadata_only=False,
+                select_sync_no=False):
+            # Construct a dummy file for extracting the fromatted path
+            tokens = {
+                "semester": course.semester,
+                "course-id": course,
+                "course": fs_escape(course.name),
+                "type": fs_escape(course.type),
+                "path": "",
+                "short-path": "",
+                "id": "0" * 32,
+                "name": "dummy",
+                "ext": "txt",
+                "description": "dummy.txt",
+                "descr-no-ext": "dummy",
+                "author": "A",
+                "time": fs_escape(str(time.localtime()))
+            }
+
+            abs_path = path.join(self.sync_dir, format_path(tokens))
+
+            try:
+                os.makedirs(path.dirname(abs_path), exist_ok=True)
+                print("Created folder for empty {} {}".format(course.type, course.name))
+            except OSError: # Folder already exists
+                pass
+
