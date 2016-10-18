@@ -2,6 +2,7 @@ import os, sys, appdirs
 
 from getpass import getpass
 from base64 import b64encode, b64decode
+from errno import ENOENT
 
 from .config import Config
 from .database import Database, View
@@ -34,7 +35,7 @@ class Application:
     def setup_sync_dir(self):
         self.cache_dir = appdirs.user_cache_dir("studip", "fknorr")
         self.create_path(self.cache_dir)
-        history_file_name = os.path.join(appdirs.user_cache_dir("studip", "fknorr") + "history")
+        history_file_name = os.path.join(appdirs.user_cache_dir("studip", "fknorr"), "history")
         history = []
         try:
             with open(history_file_name, "r", encoding="utf-8") as file:

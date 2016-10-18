@@ -36,6 +36,28 @@ def create_parser_and_feed(parser_class, html):
     return parser
 
 
+class LoginFormParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.post_url = None
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == "form" and "action" in attrs:
+            self.post_url = attrs["action"]
+            raise StopParsing
+
+    def is_complete(self):
+        return self.post_url is not None
+
+def parse_login_form(html):
+    parser = create_parser_and_feed(LoginFormParser, html)
+    if parser.is_complete():
+        return parser
+    else:
+        raise ParserError("LoginForm")
+
+
 class SAMLFormParser(HTMLParser):
     fields = [ "RelayState", "SAMLResponse" ]
 
