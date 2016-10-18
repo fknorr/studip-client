@@ -2,10 +2,15 @@ CREATE TABLE IF NOT EXISTS views (
     id INTEGER NOT NULL,
     name VARCHAR(30) DEFAULT "view",
     format VARCHAR(200) NOT NULL,
-    esc_mode SMALLINT NOT NULL DEFAULT 0,
-    charset SMALLINT NOT NULL DEFAULT 0,
-    PRIMARY KEY (id asc)
+    base VARCHAR(40),
+    esc_mode SMALLINT NOT NULL DEFAULT 1,
+    charset SMALLINT NOT NULL DEFAULT 1,
+    PRIMARY KEY (id asc),
+    CHECK(base != "" AND base != "." AND base != "..")
 );
+
+INSERT INTO views
+VALUES (0, "default", "{course} ({type})/{path}/{name}.{ext}", NULL, 1, 1);
 
 CREATE TABLE IF NOT EXISTS semesters (
     id CHAR(32) NOT NULL,

@@ -65,12 +65,13 @@ class Folder:
 
 class View:
     def __init__(self, id, name="view", format="{course} ({type})/{path}/{name}.{ext}",
-            escape=EscapeMode.Similar, charset=Charset.Unicode):
+            base=None, escape=EscapeMode.Similar, charset=Charset.Unicode):
         self.id = id
         self.name = name
         self.format = format
         self.escape = escape
         self.charset = charset
+        self.base = base
 
     def complete(self):
         return self.id and self.format and self.escape and self.charset
@@ -81,7 +82,7 @@ class QueryError(Exception):
 
 
 class Database:
-    schema_version = 6
+    schema_version = 7
 
     def __init__(self, file_name):
         def connect(self):
@@ -252,10 +253,10 @@ class Database:
     def list_views(self, full=False):
         if full:
             rows = self.query("""
-                    SELECT id, name, format, esc_mode, charset
+                    SELECT id, name, format, base, esc_mode, charset
                     FROM views
                 """)
-            return [ View(i, n, f, EscapeMode(e), Charset(c)) for i, n, f, e, c in rows ]
+            return [ View(i, n, f, b, EscapeMode(e), Charset(c)) for i, n, f, b, e, c in rows ]
         else:
             rows = self.query("""
                     SELECT id
@@ -276,10 +277,10 @@ class Database:
 
     def add_view(self, view):
         self.query("""
-                INSERT INTO views (id, name, format, esc_mode, charset)
-                VALUES (:id, :name, :fmt, :esc, :char)
-            """, id=view.id, name=view.name, fmt=view.format, esc=view.escape, char=view.charset,
-            expected_rows=0)
+                INSERT INTO views (id, name, format, base, esc_mode, charset)
+                VALUES (:id, :name, :fmt, :base, :esc, :char)
+            """, id=view.id, name=view.name, fmt=view.format, base=view.base, esc=view.escape,
+            char=view.charset, expected_rows=0)
 
     def remove_view(self, id):
         self.query("""

@@ -178,11 +178,6 @@ class Application:
         self.session.fetch_files()
 
 
-    def setup_views(self):
-        if not self.database.list_views():
-            self.database.add_view(View(id=0, name="default"))
-
-
     def checkout(self):
         sync = ViewSynchronizer(self.sync_dir, self.config, self.database)
         for view in self.database.list_views(full=True):
@@ -216,11 +211,16 @@ class Application:
             raise ApplicationExit()
 
         if view_op == "add":
-            id = max(v.id for v in views) + 1
+            id = max(v.id for v in views) + 1 if views else 0
             view = View(id, self.command_line["view_name"])
             for key, value in self.command_line["view_sets"]:
                 if key == "format":
                     view.format = value
+                elif key == "base":
+                    if value in [ "", ".", ".." ]:
+                        view.base = None
+                    else:
+                        view.base = value
                 elif key == "escape":
                     try:
                         view.escape = {
@@ -245,16 +245,24 @@ class Application:
                 else:
                     sys.stderr.write("Unknown key \"{}\"\n".format(key))
                     raise ApplicationExit
+
+            if views and (view.base is None
+                    or any(v.base is None or v.base == view.base for v in views)):
+                sys.stderr.write("View base folders cannot have any kind of subdirectory "
+                        "relationship\n")
+                raise ApplicationExit
+
             self.database.add_view(view)
-            self.database.commit()
         else:
             view = matching_views[0]
             if view_op == "show":
                 print(
                     "format: \"{}\"\n"
+                    "base: \"{}\"\n"
                     "escape: {}\n"
                     "charset: {}".format(
                         view.format,
+                        view.base if view.base else "",
                         {
                             EscapeMode.Similar: "similar",
                             EscapeMode.Typeable: "typeable",
@@ -270,6 +278,9 @@ class Application:
             else: # view_op == "rm"
                 view_sync = ViewSynchronizer(self.sync_dir, self.config, self.database)
                 view_sync.remove(view, force = "force" in self.command_line)
+                self.database.remove_view(view.id)
+
+        self.database.commit()
 
 
     def show_usage(self, out):
@@ -330,8 +341,8 @@ class Application:
                             self.command_line["view_name"] = plain[1]
                         elif view_op != "show":
                             return False
+                        self.command_line["view_sets"] = []
                         if len(plain) > 2:
-                            self.command_line["view_sets"] = []
                             if view_op == "add" and len(plain) % 2 == 0:
                                 for i in range(2, len(plain), 2):
                                     self.command_line["view_sets"].append((plain[i], plain[i+1]))
@@ -362,7 +373,6 @@ class Application:
             self.configure()
             with self.config:
                 self.open_database()
-                self.setup_views()
 
                 if op in [ "update", "fetch", "sync" ]:
                     self.open_session()
@@ -380,7 +390,6 @@ class Application:
                         raise ApplicationExit()
 
                 elif op == "checkout":
-                    self.setup_views()
                     self.checkout()
                 elif op == "view":
                     self.edit_views()

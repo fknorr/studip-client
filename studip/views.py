@@ -8,15 +8,25 @@ from .util import ellipsize, escape_file_name
 class ViewSynchronizer:
     def __init__(self, sync_dir, config, db):
         self.sync_dir = sync_dir
+        self.meta_dir = path.join(self.sync_dir, ".studip")
+        self.files_dir = path.join(self.meta_dir, "files")
         self.config = config
         self.db = db
 
+        self.existing_files = []
+        for file in self.db.list_files(full=True, select_sync_metadata_only=False,
+                select_sync_no=False):
+            abs_path = path.join(self.files_dir, file.id)
+            if path.isfile(abs_path):
+                file.inode = os.lstat(abs_path).st_ino
+                self.existing_files.append(file)
+
     def checkout(self, view):
         first_file = True
-        files_dir = path.join(self.sync_dir, ".studip", "files")
         modified_folders = set()
         copyrighted_files = []
 
+        view_dir = path.join(self.sync_dir, view.base if view.base else "")
         fs_escape = lambda str: escape_file_name(str, view.charset, view.escape)
 
         def format_path(tokens):
@@ -25,12 +35,8 @@ class ViewSynchronizer:
             except Exception:
                 raise SessionError("Invalid path format: " + path_format)
 
-        existing_files = [file for file in self.db.list_files(full=True,
-                select_sync_metadata_only=False, select_sync_no=False)
-                if path.isfile(path.join(files_dir, file.id))]
-
         try:
-            for i, file in enumerate(existing_files):
+            for i, file in enumerate(self.existing_files):
                 def make_path(folders):
                     return path.join(*map(fs_escape, folders)) if folders else ""
 
@@ -65,21 +71,21 @@ class ViewSynchronizer:
                 while folder:
                     modified_folders.add(folder)
                     folder = path.dirname(folder)
-
-                abs_path = path.join(self.sync_dir, rel_path)
+                
+                abs_path = path.join(view_dir, rel_path)
                 os.makedirs(path.dirname(abs_path), exist_ok=True)
 
                 if not path.isfile(abs_path):
                     if first_file:
                         print()
                         first_file = False
-                    print("Checking out file {}/{}: {}...".format(i, len(existing_files),
+                    print("Checking out file {}/{}: {}...".format(i, len(self.existing_files),
                             ellipsize(file.description, 50)))
 
                     if file.copyrighted:
                         copyrighted_files.append(rel_path)
 
-                    os.link(path.join(files_dir, file.id), abs_path)
+                    os.link(path.join(self.files_dir, file.id), abs_path)
 
         finally:
             modified_folders = list(modified_folders)
@@ -98,7 +104,9 @@ class ViewSynchronizer:
                     pass
 
             for folder in modified_folders:
-                update_directory_mtime(path.join(self.sync_dir, folder))
+                update_directory_mtime(path.join(view_dir, folder))
+            if view.base:
+                update_directory_mtime(view_dir)
             update_directory_mtime(self.sync_dir)
 
             if copyrighted_files:
@@ -130,7 +138,7 @@ class ViewSynchronizer:
                 "time": fs_escape(str(time.localtime()))
             }
 
-            abs_path = path.join(self.sync_dir, format_path(tokens))
+            abs_path = path.join(view_dir, format_path(tokens))
 
             try:
                 os.makedirs(path.dirname(abs_path), exist_ok=True)
@@ -140,5 +148,39 @@ class ViewSynchronizer:
 
 
     def remove(self, view, force=False):
-        self.db.remove_view(view.id)
+        view_dir = path.join(self.sync_dir, view.base if view.base else "")
+
+        # Remove our files, mark directories containing foreign files
+        directories = []
+        directories_to_keep = []
+        for cwd, dirs, files in os.walk(view_dir):
+            if cwd.startswith(self.meta_dir): continue
+
+            has_foreign_files = False
+            for lf in files:
+                # Is this file a hardlink to a file we control?
+                abs_path = os.path.join(cwd, lf)
+                inode = os.lstat(abs_path).st_ino
+                if any(f.inode == inode for f in self.existing_files):
+                    os.unlink(abs_path)
+                else:
+                    has_foreign_files = True
+
+            directories += [path.join(cwd, d) for d in dirs if d != ".studip"]
+            if has_foreign_files:
+                directories_to_keep.append(cwd)
+
+        # Sort descending by length so that subdirectories appear before their parents
+        directories.sort(key=len, reverse=True)
+
+        # Remove empty directories
+        for dir in directories:
+            if not any (d.startswith(dir) for d in directories_to_keep):
+                os.rmdir(dir)
+
+        if directories_to_keep:
+            print("The following directories contain unmanaged files and were kept:\n  - "
+                    + "\n  - ".join(directories_to_keep))
+        else:
+            os.rmdir(view_dir)
 
