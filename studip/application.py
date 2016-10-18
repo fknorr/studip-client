@@ -259,9 +259,6 @@ class Application:
             return False
 
         self.command_line["operation"] = op
-
-        print(self.command_line)
-        sys.exit(1)
         return True
 
 
