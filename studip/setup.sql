@@ -63,6 +63,26 @@ BEGIN
     UPDATE courses SET root = last_insert_rowid() WHERE id = new.id;
 END;
 
+CREATE TABLE IF NOT EXISTS checkouts (
+    view INTEGER NOT NULL,
+    file id CHAR(32) NOT NULL,
+    PRIMARY KEY (view, file),
+    FOREIGN KEY (view) REFERENCES views(id),
+    FOREIGN KEY (file) REFERENCES files(id)
+) WITHOUT ROWID;
+
+CREATE TRIGGER IF NOT EXISTS cleanup_checkouts_views
+BEFORE DELETE ON views
+BEGIN
+    DELETE FROM checkouts WHERE view = old.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS cleanup_checkouts_files
+BEFORE DELETE ON files
+BEGIN
+    DELETE FROM checkouts WHERE file = old.id;
+END;
+
 CREATE VIEW IF NOT EXISTS folder_parents AS
     WITH RECURSIVE parents (folder, level, this, parent) AS (
         SELECT id, 0, id, parent

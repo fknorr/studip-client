@@ -99,6 +99,8 @@ operations are available to show and modify views:
 - `view show <name>`: Shows details about a specific view
 - `view add <name> [<key> <value>...]`: Adds a new view, setting the attributes `key = value`
 - `view rm <name>`: Removes a view and the associated directory structure
+- `view reset-deleted <name>`: Forget about deleted files, allowing them to be checked out again
+- `view reset-deleted`: As above, but for all views.
 
 When _studip-client_ is first invoked, a default view will be created. If you want to change
 the directory structure, you first need to remove it - If multiple views are to be created, they

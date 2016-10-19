@@ -179,9 +179,9 @@ class Application:
 
 
     def checkout(self):
-        sync = ViewSynchronizer(self.sync_dir, self.config, self.database)
         for view in self.database.list_views(full=True):
-            sync.checkout(view)
+            sync = ViewSynchronizer(self.sync_dir, self.config, self.database, view)
+            sync.checkout()
 
 
     def clear_cache(self):
@@ -199,8 +199,13 @@ class Application:
         views = self.database.list_views(full=True)
 
         view_op = self.command_line["view_op"]
-        if view_op == "show" and "view_name" not in self.command_line:
-            print("\n".join(v.name for v in views))
+        if "view_name" not in self.command_line:
+            if view_op == "show":
+                print("\n".join(v.name for v in views))
+            else: # view_op == "reset-deleted"
+                for v in views:
+                    sync = ViewSynchronizer(self.sync_dir, self.config, self.database, v)
+                    sync.reset_deleted()
             return
 
         matching_views = [v for v in views if v.name == self.command_line["view_name"]]
@@ -275,10 +280,13 @@ class Application:
                             Charset.Identifier: "Identifier"
                         }[view.charset]
                     ))
-            else: # view_op == "rm"
-                view_sync = ViewSynchronizer(self.sync_dir, self.config, self.database)
-                view_sync.remove(view)
+            elif view_op == "rm":
+                view_sync = ViewSynchronizer(self.sync_dir, self.config, self.database, view)
+                view_sync.remove()
                 self.database.remove_view(view.id)
+            else: # view_op == "reset-deleted"
+                view_sync = ViewSynchronizer(self.sync_dir, self.config, self.database, view)
+                view_sync.reset_deleted()
 
         self.database.commit()
 
@@ -298,6 +306,7 @@ class Application:
             "    view show [<name>]\n"
             "    view add <name> [<key> <value>]...\n"
             "    view rm [-f] <name>\n\n"
+            "    view reset-deleted [<name>]\n\n"
             "Possible global parameters:\n"
             "    -d <dir>      Sync directory, assuming most recent one if not given\n"
             .format(sys.argv[0]))
@@ -334,10 +343,10 @@ class Application:
                     return False
                 else:
                     self.command_line["view_op"] = view_op = plain[0]
-                    if view_op in [ "show", "add", "rm" ]:
+                    if view_op in [ "show", "add", "rm", "reset-deleted" ]:
                         if len(plain) > 1:
                             self.command_line["view_name"] = plain[1]
-                        elif view_op != "show":
+                        elif view_op not in [ "show", "reset-deleted" ]:
                             return False
                         self.command_line["view_sets"] = []
                         if len(plain) > 2:

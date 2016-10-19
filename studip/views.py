@@ -6,37 +6,74 @@ from .util import ellipsize, escape_file_name
 
 
 class ViewSynchronizer:
-    def __init__(self, sync_dir, config, db):
+    def __init__(self, sync_dir, config, db, view):
         self.sync_dir = sync_dir
-        self.meta_dir = path.join(self.sync_dir, ".studip")
-        self.files_dir = path.join(self.meta_dir, "files")
         self.config = config
         self.db = db
+        self.view = view
+        self.meta_dir = path.join(self.sync_dir, ".studip")
+        self.files_dir = path.join(self.meta_dir, "files")
+        self.view_dir = path.join(self.sync_dir, self.view.base if self.view.base else "")
 
-        self.existing_files = []
+        # Find all known files that have been fetched into .studip/files
+        fetched_files = []
         for file in self.db.list_files(full=True, select_sync_metadata_only=False,
                 select_sync_no=False):
             abs_path = path.join(self.files_dir, file.id)
             if path.isfile(abs_path):
                 file.inode = os.lstat(abs_path).st_ino
-                self.existing_files.append(file)
+                fetched_files.append(file)
 
-    def checkout(self, view):
+        # Find all files hardlinked to a fetched file within the view's directory, tree
+        self.existing_files = []
+        for cwd, dirs, files in os.walk(self.view_dir):
+            if cwd.startswith(self.meta_dir): continue
+
+            for f in files:
+                abs_path = os.path.join(cwd, f)
+                inode = os.lstat(abs_path).st_ino
+                existing = next((f for f in fetched_files if f.inode == inode), None)
+                if existing:
+                    self.existing_files.append(existing)
+
+        # From the checkouts db table, derive which files have been deleted and which
+        # should be checked out
+        self.new_files = []
+        self.deleted_files = []
+
+        checked_out_files = self.db.list_checkouts(view.id)
+        for f in fetched_files:
+            # File is known, but not checked out
+            if not f in self.existing_files:
+                if f.id in checked_out_files:
+                    self.deleted_files.append(f)
+                else:
+                    self.new_files.append(f)
+            # File is checked out, but we don't have a record of it (e.g. after reset-deleted)
+            elif f.id in checked_out_files:
+                self.db.add_checkout(self.view.id, f.id)
+
+        self.db.commit()
+
+
+    def checkout(self):
+        if not self.view:
+            raise SessionError("View does not exist")
+
         first_file = True
-        modified_folders = set()
+        modified_folders = set() 
         copyrighted_files = []
 
-        view_dir = path.join(self.sync_dir, view.base if view.base else "")
-        fs_escape = lambda str: escape_file_name(str, view.charset, view.escape)
+        fs_escape = lambda str: escape_file_name(str, self.view.charset, self.view.escape)
 
         def format_path(tokens):
             try:
-                return view.format.format(**tokens)
+                return self.view.format.format(**tokens)
             except Exception:
                 raise SessionError("Invalid path format: " + path_format)
 
         try:
-            for i, file in enumerate(self.existing_files):
+            for i, file in enumerate(self.new_files):
                 def make_path(folders):
                     return path.join(*map(fs_escape, folders)) if folders else ""
 
@@ -72,7 +109,7 @@ class ViewSynchronizer:
                     modified_folders.add(folder)
                     folder = path.dirname(folder)
                 
-                abs_path = path.join(view_dir, rel_path)
+                abs_path = path.join(self.view_dir, rel_path)
                 os.makedirs(path.dirname(abs_path), exist_ok=True)
 
                 if not path.isfile(abs_path):
@@ -86,8 +123,11 @@ class ViewSynchronizer:
                         copyrighted_files.append(rel_path)
 
                     os.link(path.join(self.files_dir, file.id), abs_path)
+                    self.db.add_checkout(self.view.id, file.id)
 
         finally:
+            self.db.commit()
+
             modified_folders = list(modified_folders)
             modified_folders.sort(key=lambda f: len(f), reverse=True)
 
@@ -104,9 +144,9 @@ class ViewSynchronizer:
                     pass
 
             for folder in modified_folders:
-                update_directory_mtime(path.join(view_dir, folder))
-            if view.base:
-                update_directory_mtime(view_dir)
+                update_directory_mtime(path.join(self.view_dir, folder))
+            if self.view.base:
+                update_directory_mtime(self.view_dir)
             update_directory_mtime(self.sync_dir)
 
             if copyrighted_files:
@@ -138,22 +178,23 @@ class ViewSynchronizer:
                 "time": fs_escape(str(time.localtime()))
             }
 
-            abs_path = path.join(view_dir, format_path(tokens))
+            abs_path = path.join(self.view_dir, format_path(tokens))
 
             try:
-                os.makedirs(path.dirname(abs_path), exist_ok=True)
+                os.makedirs(path.dirname(abs_path), exist_ok=False)
                 print("Created folder for empty {} {}".format(course.type, course.name))
             except OSError: # Folder already exists
                 pass
 
 
-    def remove(self, view):
-        view_dir = path.join(self.sync_dir, view.base if view.base else "")
+    def remove(self):
+        if not self.view:
+            raise SessionError("View does not exist")
 
         # Remove our files, mark directories containing foreign files
         directories = []
         directories_to_keep = []
-        for cwd, dirs, files in os.walk(view_dir):
+        for cwd, dirs, files in os.walk(self.view_dir):
             if cwd.startswith(self.meta_dir): continue
 
             has_foreign_files = False
@@ -182,5 +223,15 @@ class ViewSynchronizer:
             print("The following directories contain unmanaged files and were kept:\n  - "
                     + "\n  - ".join(directories_to_keep))
         else:
-            os.rmdir(view_dir)
+            os.rmdir(self.view_dir)
+
+        self.view = None
+
+
+    def reset_deleted(self):
+        if not self.view:
+            raise SessionError("View does not exist")
+
+        self.db.reset_checkouts(self.view.id)
+        self.db.commit()
 

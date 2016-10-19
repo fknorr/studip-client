@@ -82,7 +82,7 @@ class QueryError(Exception):
 
 
 class Database:
-    schema_version = 7
+    schema_version = 8
 
     def __init__(self, file_name):
         def connect(self):
@@ -287,6 +287,25 @@ class Database:
                 DELETE FROM views
                 WHERE id=:id
             """, id=id, expected_rows=0)
+
+    def list_checkouts(self, view_id):
+        rows = self.query("""
+                SELECT file FROM checkouts
+                WHERE view=:view
+            """, view=view_id)
+        return [ id for id, in rows ]
+
+    def add_checkout(self, view_id, file_id):
+        self.query("""
+                INSERT INTO checkouts (view, file)
+                VALUES (:view, :file)
+            """, view=view_id, file=file_id, expected_rows=0)
+
+    def reset_checkouts(self, view_id):
+        self.query("""
+                DELETE FROM checkouts
+                WHERE view=:view
+            """, view=view_id, expected_rows=0)
 
     def commit(self):
         self.conn.commit()
