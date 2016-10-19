@@ -319,44 +319,49 @@ class Application:
         self.command_line = {}
 
         args = sys.argv[1:]
-        op = sys.argv[1]
+        if args[0] == "help" or "--help" in args or "-h" in args:
+            self.command_line["operation"] = "help"
+            return True
+
         plain = []
-        if op == "help" or "--help" in args or "-h" in args:
-            op = "help"
-        elif op in [ "update", "fetch", "checkout", "sync", "clear-cache", "view" ]:
-            i = 1
-            while i < len(args):
-                if args[i].startswith("-"):
-                    if args[i] == "-d" and i < len(args)-1:
-                        self.command_line["sync_dir"] = args[i+1]
-                        i += 1
-                    else:
+        i = 0
+        while i < len(args):
+            if args[i].startswith("-"):
+                if args[i] == "-d" and i < len(args)-1:
+                    self.command_line["sync_dir"] = args[i+1]
+                    i += 1
+                else:
+                    return False
+            else:
+                plain.append(args[i])
+            i += 1
+
+        if not plain: return False
+        op = plain[0]
+        plain = plain[1:]
+
+        if op in [ "update", "fetch", "checkout", "sync", "clear-cache" ]:
+            if len(plain) > 0:
+                return False
+        elif op in [ "view" ]:
+            if len(plain) < 1:
+                return False
+            else:
+                self.command_line["view_op"] = view_op = plain[0]
+                if view_op in [ "show", "add", "rm", "reset-deleted" ]:
+                    if len(plain) > 1:
+                        self.command_line["view_name"] = plain[1]
+                    elif view_op not in [ "show", "reset-deleted" ]:
                         return False
-                else:
-                    plain.append(args[i])
-                i += 1
-            if op in [ "update", "fetch", "checkout", "sync", "clear-cache" ]:
-                if len(plain) > 0:
-                    return False
-            elif op in [ "view" ]:
-                if len(plain) < 1:
-                    return False
-                else:
-                    self.command_line["view_op"] = view_op = plain[0]
-                    if view_op in [ "show", "add", "rm", "reset-deleted" ]:
-                        if len(plain) > 1:
-                            self.command_line["view_name"] = plain[1]
-                        elif view_op not in [ "show", "reset-deleted" ]:
+                    self.command_line["view_sets"] = []
+                    if len(plain) > 2:
+                        if view_op == "add" and len(plain) % 2 == 0:
+                            for i in range(2, len(plain), 2):
+                                self.command_line["view_sets"].append((plain[i], plain[i+1]))
+                        else:
                             return False
-                        self.command_line["view_sets"] = []
-                        if len(plain) > 2:
-                            if view_op == "add" and len(plain) % 2 == 0:
-                                for i in range(2, len(plain), 2):
-                                    self.command_line["view_sets"].append((plain[i], plain[i+1]))
-                            else:
-                                return False
-                    else:
-                        return False
+                else:
+                    return False
         else:
             return False
 
@@ -397,9 +402,10 @@ class Application:
                     self.checkout()
                 elif op == "view":
                     self.edit_views()
-
         elif op == "clear-cache":
             self.clear_cache()
+        else: # op == "help"
+            self.show_usage(sys.stdout)
 
 
 def main():
