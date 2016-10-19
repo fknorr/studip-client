@@ -4,7 +4,10 @@ Stud.IP Client
 _studip-client_ is a CLI application for synchronizing the directory tree from a Stud.IP
 university account to the local file system.
 
-It is currently only implemented for the University of Passau (https://uni-passau.de/).
+It does this by creating a local database of course files, downloading them into its repository
+and presenting them in the file system as one or several different _views_.
+
+_studip-client_ is currently only implemented for the University of Passau (https://uni-passau.de/).
 
 Installation
 ------------

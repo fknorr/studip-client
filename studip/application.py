@@ -305,7 +305,7 @@ class Application:
             "Commands for showing and modifying views:\n"
             "    view show [<name>]\n"
             "    view add <name> [<key> <value>]...\n"
-            "    view rm [-f] <name>\n\n"
+            "    view rm [-f] <name>\n"
             "    view reset-deleted [<name>]\n\n"
             "Possible global parameters:\n"
             "    -d <dir>      Sync directory, assuming most recent one if not given\n"
