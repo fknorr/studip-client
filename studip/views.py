@@ -50,7 +50,7 @@ class ViewSynchronizer:
                 else:
                     self.new_files.append(f)
             # File is checked out, but we don't have a record of it (e.g. after reset-deleted)
-            elif f.id in checked_out_files:
+            elif f.id not in checked_out_files:
                 self.db.add_checkout(self.view.id, f.id)
 
         self.db.commit()
