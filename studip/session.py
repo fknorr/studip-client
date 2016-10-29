@@ -83,8 +83,11 @@ class Session:
 
         try:
             form_data = parse_saml_form(r.text)
-        except ParserError:
-            raise LoginError("Login failed")
+        except ParserError as e:
+            message = "Login failed"
+            if e.message:
+                message += ": " + e.message
+            raise LoginError(message)
 
         try:
             r = self.http.post(self.studip_url("/Shibboleth.sso/SAML2/POST"), form_data)

@@ -15,7 +15,7 @@ def get_url_field(url, field):
 
 
 class ParserError(Exception):
-    def __init__(self, message=""):
+    def __init__(self, message=None):
         self.message = message
 
     def __repr__(self):
@@ -64,14 +64,27 @@ class SAMLFormParser(HTMLParser):
     def __init__(self):
         super().__init__()
         self.form_data = {}
+        self.in_error_p = False
+        self.error = None
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
-        if tag == "input" and "name" in attrs and "value" in attrs:
+        if tag == "p" and "class" in attrs and "form-error" in attrs["class"]:
+            self.in_error_p = True
+        elif tag == "input" and "name" in attrs and "value" in attrs:
             if attrs["name"] in SAMLFormParser.fields:
                 self.form_data[attrs["name"]] = attrs["value"]
+
         if self.is_complete():
             raise StopParsing
+
+    def handle_endtag(self, tag):
+        if tag == "p":
+            self.in_error_p = False
+
+    def handle_data(self, data):
+        if self.in_error_p:
+            self.error = data
 
     def is_complete(self):
         return all(f in self.form_data for f in SAMLFormParser.fields)
@@ -81,7 +94,7 @@ def parse_saml_form(html):
     if parser.is_complete():
         return parser.form_data
     else:
-        raise ParserError("SAMLForm")
+        raise ParserError(parser.error)
 
 
 class SemesterListParser(HTMLParser):
