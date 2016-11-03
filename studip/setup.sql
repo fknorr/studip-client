@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS views (
 );
 
 INSERT INTO views
-VALUES (0, "default", "{course} ({type})/{path}/{name}.{ext}", NULL, 1, 1);
+VALUES (0, "default", "{course} ({type})/{path}/{name}{ext}", NULL, 1, 1);
 
 CREATE TABLE IF NOT EXISTS semesters (
     id CHAR(32) NOT NULL,

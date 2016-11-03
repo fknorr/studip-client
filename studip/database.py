@@ -82,7 +82,7 @@ class QueryError(Exception):
 
 
 class Database:
-    schema_version = 8
+    schema_version = 9
 
     def __init__(self, file_name):
         def connect(self):

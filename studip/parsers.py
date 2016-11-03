@@ -305,8 +305,7 @@ class FileDetailsParser(HTMLParser):
                         self.file.id = get_url_field(href, "file_id")
                         file_name_parts = get_url_field(href, "file_name").rsplit(".", 1)
                         self.file.name = file_name_parts[0]
-                        if len(file_name_parts) > 0:
-                            self.file.extension = file_name_parts[1]
+                        self.file.extension = file_name_parts[1] if len(file_name_parts) > 1 else ""
             if tag == "div":
                 attrs = dict(attrs)
                 if "class" in attrs and "messagebox" in attrs["class"]:

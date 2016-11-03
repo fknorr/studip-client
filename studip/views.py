@@ -94,7 +94,7 @@ class ViewSynchronizer:
                     "short-path": make_path(short_path),
                     "id": file.id,
                     "name": fs_escape(file.name),
-                    "ext": file.extension,
+                    "ext": ("." + file.extension) if file.extension else "",
                     "description": fs_escape(file.description),
                     "descr-no-ext": fs_escape(descr_no_ext),
                     "author": fs_escape(file.author),
