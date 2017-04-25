@@ -94,26 +94,23 @@ class Session:
         except RequestException as e:
             raise_fetch_error("login page", e)
 
-        self.overview_page = r.text
-
 
     def update_metadata(self):
+        url = self.studip_url("/studip/dispatch.php/my_courses/set_semester")
         try:
-            semester_list = parse_semester_list(self.overview_page)
+            overview_page = self.http.post(url, data={ "sem_select": "current" }).text
+        except RequestException as e:
+            raise_fetch_error("overview page", e)
+
+        try:
+            semester_list = parse_semester_list(overview_page)
         except ParserError:
             raise SessionError("Unable to parse overview page")
 
         self.db.update_semester_list(semester_list.semesters)
 
-        if semester_list.selected != "current":
-            url = self.studip_url("/studip/dispatch.php/my_courses/set_semester")
-            try:
-                self.overview_page = self.http.post(url, data={ "sem_select": "current" }).text
-            except RequestException as e:
-                raise_fetch_error("overview page", e)
-
         try:
-            remote_courses = parse_course_list(self.overview_page)
+            remote_courses = parse_course_list(overview_page)
         except ParserError:
             raise SessionError("Unable to parse course list")
 
