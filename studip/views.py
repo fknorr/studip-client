@@ -86,7 +86,7 @@ class ViewSynchronizer:
                     short_path = short_path[1:]
 
                 tokens = {
-                    "semester": file.course_semester,
+                    "semester": fs_escape(file.course_semester),
                     "course-id": file.course,
                     "course": fs_escape(file.course_name),
                     "type": fs_escape(file.course_type),
@@ -163,8 +163,8 @@ class ViewSynchronizer:
                 select_sync_no=False):
             # Construct a dummy file for extracting the fromatted path
             tokens = {
-                "semester": course.semester,
-                "course-id": course,
+                "semester": fs_escape(course.semester),
+                "course-id": course.id,
                 "course": fs_escape(course.name),
                 "type": fs_escape(course.type),
                 "path": "",
@@ -175,7 +175,7 @@ class ViewSynchronizer:
                 "description": "dummy.txt",
                 "descr-no-ext": "dummy",
                 "author": "A",
-                "time": fs_escape(str(time.localtime()))
+                "time": fs_escape("0000-00-00 00:00:00"),
             }
 
             abs_path = path.join(self.view_dir, format_path(tokens))
