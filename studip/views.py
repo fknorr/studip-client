@@ -222,7 +222,7 @@ class ViewSynchronizer:
         if directories_to_keep:
             print("The following directories contain unmanaged files and were kept:\n  - "
                     + "\n  - ".join(directories_to_keep))
-        else:
+        elif self.view.base: # Do not remove root dir
             os.rmdir(self.view_dir)
 
         self.view = None
