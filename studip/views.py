@@ -4,8 +4,35 @@ from os import path
 
 from .util import ellipsize, escape_file_name
 
-WORD_SEPARATOR_RE = re.compile(r'[-. _/]+')
+WORD_SEPARATOR_RE = re.compile(r'[-. _/()]+')
 NUMBER_RE = re.compile(r'^([0-9]+)|([IVXLCDM]+)$')
+
+
+def abbreviate_course(name):
+    words = WORD_SEPARATOR_RE.split(name)
+    number = ""
+    abbrev = ""
+    if len(words) > 1 and NUMBER_RE.match(words[-1]):
+        number = words[-1]
+        words = words[0:len(words) - 1]
+    if len(words) < 3:
+        abbrev = "".join(w[0 : min(3, len(w))] for w in words)
+    elif len(words) >= 3:
+        abbrev = "".join(w[0] for w in words if len(w) > 0)
+    return abbrev + number
+
+def abbreviate_type(type):
+    special_abbrevs = {
+        "Arbeitsgemeinschaft": "AG",
+        "Studien-/Arbeitsgruppe": "SG",
+    }
+    try:
+        return special_abbrevs[type]
+    except KeyError:
+        abbrev = type[0]
+        if type.endswith("seminar"):
+            abbrev += "S"
+        return abbrev
 
 
 class ViewSynchronizer:
@@ -58,19 +85,6 @@ class ViewSynchronizer:
 
         self.db.commit()
 
-    def abbreviate_course(name):
-        words = WORD_SEPARATOR_RE.split(name)
-        number = ""
-        abbrev = ""
-        if len(words) > 1 and NUMBER_RE.match(words[-1]):
-            number = words[-1]
-            words = words[0:len(words) - 1]
-        if len(words) < 3:
-            abbrev = "".join(map(lambda s: s[0 : min(3, len(s))], words))
-        elif len(words) >= 3:
-            abbrev = "".join(map(lambda s: s[0], words))
-        return abbrev + number
-
     def checkout(self):
         if not self.view:
             raise SessionError("View does not exist")
@@ -103,10 +117,10 @@ class ViewSynchronizer:
                 tokens = {
                     "semester": fs_escape(file.course_semester),
                     "course-id": file.course,
-                    "course-abbrev": fs_escape(
-                            ViewSynchronizer.abbreviate_course(file.course_name)),
+                    "course-abbrev": fs_escape(abbreviate_course(file.course_name)),
                     "course": fs_escape(file.course_name),
                     "type": fs_escape(file.course_type),
+                    "type-abbrev": fs_escape(abbreviate_type(file.course_type)),
                     "path": make_path(file.path),
                     "short-path": make_path(short_path),
                     "id": file.id,
@@ -183,9 +197,9 @@ class ViewSynchronizer:
                 "semester": fs_escape(course.semester),
                 "course-id": course.id,
                 "course": fs_escape(course.name),
-                "course-abbrev": fs_escape(
-                        ViewSynchronizer.abbreviate_course(course.name)),
+                "course-abbrev": fs_escape(abbreviate_course(course.name)),
                 "type": fs_escape(course.type),
+                "type-abbrev": fs_escape(abbreviate_type(course.type)),
                 "path": "",
                 "short-path": "",
                 "id": "0" * 32,

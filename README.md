@@ -131,6 +131,7 @@ ASCII. The following attributes are available:
     {course}          Course name
     {course-abbrev}   Auto-generated course name abbreviation (e.g. "LinAlgI")
     {type}            Course type (e.g. "Lecture")
+    {type-abbrev}     Abbreviation of the course type (e.g. "L")
     {path}            Path of the file's containing directory
     {short-path}      Like {path}, but with "Allgemeiner Dateiordner" removed
     {id}              File hash-id
