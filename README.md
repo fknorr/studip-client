@@ -126,9 +126,10 @@ ASCII. The following attributes are available:
     following placeholders are available:
 
     ```
-    {semester}        Course semester
+    {semester}        Course semester (e.g. "WS 16/17")
     {course-id}       Course hash-id
     {course}          Course name
+    {course-abbrev}   Auto-generated course name abbreviation (e.g. "LinAlgI")
     {type}            Course type (e.g. "Lecture")
     {path}            Path of the file's containing directory
     {short-path}      Like {path}, but with "Allgemeiner Dateiordner" removed
@@ -138,7 +139,7 @@ ASCII. The following attributes are available:
     {description}     Full file description
     {descr-no-ext}    Like {description}, but with the file extension stripped (if any)
     {author}          File author's name
-    {time}            Time of creation
+    {time}            Time of creation (e.g. "2017-03-02 13:12")
     ```
 
 - `base`: The base directory containing the view's directory tree. If there is only one view,

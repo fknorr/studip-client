@@ -1,8 +1,11 @@
-import os,time
+import os,time, re
 
 from os import path
 
 from .util import ellipsize, escape_file_name
+
+WORD_SEPARATOR_RE = re.compile(r'[-. _/]+')
+NUMBER_RE = re.compile(r'^([0-9]+)|([IVXLCDM]+)$')
 
 
 class ViewSynchronizer:
@@ -55,6 +58,18 @@ class ViewSynchronizer:
 
         self.db.commit()
 
+    def abbreviate_course(name):
+        words = WORD_SEPARATOR_RE.split(name)
+        number = ""
+        abbrev = ""
+        if len(words) > 1 and NUMBER_RE.match(words[-1]):
+            number = words[-1]
+            words = words[0:len(words) - 1]
+        if len(words) < 3:
+            abbrev = "".join(map(lambda s: s[0 : min(3, len(s))], words))
+        elif len(words) >= 3:
+            abbrev = "".join(map(lambda s: s[0], words))
+        return abbrev + number
 
     def checkout(self):
         if not self.view:
@@ -88,6 +103,8 @@ class ViewSynchronizer:
                 tokens = {
                     "semester": fs_escape(file.course_semester),
                     "course-id": file.course,
+                    "course-abbrev": fs_escape(
+                            ViewSynchronizer.abbreviate_course(file.course_name)),
                     "course": fs_escape(file.course_name),
                     "type": fs_escape(file.course_type),
                     "path": make_path(file.path),
@@ -166,6 +183,8 @@ class ViewSynchronizer:
                 "semester": fs_escape(course.semester),
                 "course-id": course.id,
                 "course": fs_escape(course.name),
+                "course-abbrev": fs_escape(
+                        ViewSynchronizer.abbreviate_course(course.name)),
                 "type": fs_escape(course.type),
                 "path": "",
                 "short-path": "",
