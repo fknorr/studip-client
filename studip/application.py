@@ -254,7 +254,7 @@ class Application:
             if views and (view.base is None
                     or any(v.base is None or v.base == view.base for v in views)):
                 sys.stderr.write("View base folders cannot have any kind of subdirectory "
-                        "relationship\n")
+                        "relationship. You probably want to remove the 'default' view first.\n")
                 raise ApplicationExit
 
             self.database.add_view(view)
@@ -277,7 +277,7 @@ class Application:
                         {
                             Charset.Unicode: "unicode",
                             Charset.Ascii: "ascii",
-                            Charset.Identifier: "Identifier"
+                            Charset.Identifier: "identifier"
                         }[view.charset]
                     ))
             elif view_op == "rm":
