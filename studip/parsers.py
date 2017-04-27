@@ -8,7 +8,7 @@ from .database import Semester, Course, SyncMode, File
 from .util import compact
 
 DUPLICATE_TYPE_RE = re.compile(r'^(?P<type>(Plenarü|Tutorü|Ü)bung(en)?|Tutorium|Praktikum'
-        + r'|(Obers|Haupts|S)eminar|Lectures?|Exercises?)(\s+(f[oü]r|on|zum?|i[nm]|auf))?'
+        + r'|(Obers|Haupts|S)eminar|Lectures?|Exercises?)(\s+(f[oü]r|on|zu[rm]?|i[nm]|auf))?'
         + r'\s+(?P<name>.+)')
 COURSE_NAME_TYPE_RE = re.compile(r'(.*?)\s*\(\s*([^)]+)\s*\)\s*$')
 
@@ -201,8 +201,8 @@ class CourseListParser(HTMLParser):
                 name, type = COURSE_NAME_TYPE_RE.match(full_name).groups()
                 match = DUPLICATE_TYPE_RE.match(name)
                 if match:
-                    type = match["type"]
-                    name = match["name"]
+                    type = match.group("type")
+                    name = match.group("name")
                 self.courses.append(Course(id=self.current_id,
                         semester=compact(self.current_semester),
                         number=compact(self.current_number),
