@@ -3,6 +3,10 @@ import re
 from base64 import b64encode, b64decode
 from enum import IntEnum
 
+PUNCTUATION_WHITESPACE_RE = re.compile(r"[ _/.,;:\-_#'+*~!^\"$%&/()[\]}{\\?<>|]+")
+ASCII_RE = re.compile(r"[^\x00-\x7f]+")
+FS_SPECIAL_CHARS_RE = re.compile(r"[/:]+")
+
 
 def prompt_choice(prompt, options, default=None):
     choice = None
@@ -58,9 +62,9 @@ def escape_file_name(str, charset, mode):
         str = str.replace("ß", "ss").replace("ä", "ae").replace("Ä", "Ae") \
                 .replace("ö", "oe").replace("Ö", "Oe").replace("ü", "ue") \
                 .replace("Ü", "Ue")
-        str = re.sub(r"[^\x00-\x7f]+", "", str)
+        str = ASCII_RE.sub("", str)
     if mode in [EscapeMode.SnakeCase, EscapeMode.CamelCase] or charset == Charset.Identifier:
-        parts = re.split(r"[ _/.,;:\-_#'+*~!^\"$%&/()[\]}{\\?<>|]+", str)
+        parts = PUNCTUATION_WHITESPACE_RE.split(str)
         if mode == EscapeMode.SnakeCase:
             return "_".join(parts).lower()
         elif mode == EscapeMode.CamelCase:
@@ -68,7 +72,7 @@ def escape_file_name(str, charset, mode):
         else:
             return "_".join(parts)
     elif mode == EscapeMode.Typeable or charset in [Charset.Ascii, Charset.Identifier]:
-        return re.sub(r"[/:]+", "-" if charset == Charset.Ascii else "_", str)
+        return FS_SPECIAL_CHARS_RE.sub("-" if charset == Charset.Ascii else "_", str)
     else: # mode == "unicode" or incorrectly set
         # Replace regular '/' by similar looking 'DIVISION SLASH' (U+2215) and ':' by
         # 'RATIO' to create a valid directory name
