@@ -290,6 +290,12 @@ class Application:
 
         self.database.commit()
 
+    def edit_courses(self):
+        courses = self.database.list_courses(full=True)
+
+        course_op = self.command_line["course_op"]
+        if course_op == "show":
+            print("\n".join(v.type + " " + v.name for v in courses))
 
     def show_usage(self, out):
         out.write(
@@ -301,12 +307,15 @@ class Application:
             "    sync          <update>, then <fetch>, then <checkout>\n"
             "    clear-cache   Clear local course and file database\n"
             "    view <...>    Show and modify views\n"
+            "    course <...>  Show and change synchronized courses\n"
             "    help          Show this synopsis\n\n"
             "Commands for showing and modifying views:\n"
             "    view show [<name>]\n"
             "    view add <name> [<key> <value>]...\n"
             "    view rm [-f] <name>\n"
             "    view reset-deleted [<name>]\n\n"
+            "Commands for showing and changing courses:\n"
+            "    course show\n"
             "Possible global parameters:\n"
             "    -d <dir>      Sync directory, assuming most recent one if not given\n"
             .format(sys.argv[0]))
@@ -343,7 +352,7 @@ class Application:
         if op in [ "update", "fetch", "checkout", "sync", "clear-cache" ]:
             if len(plain) > 0:
                 return False
-        elif op in [ "view" ]:
+        elif op == "view":
             if len(plain) < 1:
                 return False
             else:
@@ -362,6 +371,16 @@ class Application:
                             return False
                 else:
                     return False
+        elif op == "course":
+            if len(plain) < 1:
+                return False
+            else:
+                self.command_line["course_op"] = view_op = plain[0]
+                if view_op in [ "show" ]:
+                    if len(plain) != 1:
+                        return False
+                else:
+                    return False
         else:
             return False
 
@@ -378,7 +397,7 @@ class Application:
 
         op = self.command_line["operation"]
 
-        if op in [ "update", "fetch", "checkout", "sync", "view" ]:
+        if op in [ "update", "fetch", "checkout", "sync", "view", "course" ]:
             self.configure()
             with self.config:
                 self.open_database()
@@ -402,6 +421,8 @@ class Application:
                     self.checkout()
                 elif op == "view":
                     self.edit_views()
+                elif op == "course":
+                    self.edit_courses()
         elif op == "clear-cache":
             self.clear_cache()
         else: # op == "help"
