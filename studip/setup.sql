@@ -97,7 +97,7 @@ CREATE VIEW IF NOT EXISTS folder_parents AS
 CREATE VIEW IF NOT EXISTS folder_paths AS
     SELECT list.folder AS folder,
         MAX(courses.id) AS course,
-        '[' || IFNULL(GROUP_CONCAT('"' || REPLACE(folders.name,
+        '[' || IFNULL(GROUP_CONCAT('"' || REPLACE(REPLACE(folders.name, '\', '\\'),
             '"', '\"') || '"', ', '), '') || ']' AS path
     FROM (
         SELECT parents.folder AS folder, parents.this AS this
