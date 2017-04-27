@@ -4,7 +4,8 @@ from base64 import b64encode, b64decode
 from enum import IntEnum
 
 PUNCTUATION_WHITESPACE_RE = re.compile(r"[ _/.,;:\-_#'+*~!^\"$%&/()[\]}{\\?<>|]+")
-ASCII_RE = re.compile(r"[^\x00-\x7f]+")
+NON_ASCII_RE = re.compile(r"[^\x00-\x7f]+")
+NON_IDENTIFIER_RE = re.compile(r"[^A-Za-z0-9_]+")
 FS_SPECIAL_CHARS_RE = re.compile(r"[/:]+")
 
 
@@ -62,7 +63,7 @@ def escape_file_name(str, charset, mode):
         str = str.replace("ß", "ss").replace("ä", "ae").replace("Ä", "Ae") \
                 .replace("ö", "oe").replace("Ö", "Oe").replace("ü", "ue") \
                 .replace("Ü", "Ue")
-        str = ASCII_RE.sub("", str)
+        str = (NON_ASCII_RE if charset == Charset.Ascii else NON_IDENTIFIER_RE).sub("", str)
     if mode in [EscapeMode.SnakeCase, EscapeMode.CamelCase] or charset == Charset.Identifier:
         parts = PUNCTUATION_WHITESPACE_RE.split(str)
         if mode == EscapeMode.SnakeCase:

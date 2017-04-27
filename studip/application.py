@@ -239,7 +239,7 @@ class Application:
                         raise ApplicationExit
                 elif key == "charset":
                     try:
-                        view.escape = {
+                        view.charset = {
                             "unicode": Charset.Unicode,
                             "ascii": Charset.Ascii,
                             "identifier": Charset.Identifier
