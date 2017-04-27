@@ -64,7 +64,7 @@ def escape_file_name(str, charset, mode):
         if mode == EscapeMode.SnakeCase:
             return "_".join(parts).lower()
         elif mode == EscapeMode.CamelCase:
-            return "".join(w.title() for w in parts)
+            return "".join(w[0].upper() + w[1:] for w in parts if len(w) > 0)
         else:
             return "_".join(parts)
     elif mode == EscapeMode.Typeable or charset in [Charset.Ascii, Charset.Identifier]:
