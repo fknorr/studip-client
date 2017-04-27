@@ -240,9 +240,9 @@ class Application:
                 elif key == "charset":
                     try:
                         view.escape = {
-                            "unicode": EscapeMode.Unicode,
-                            "ascii": EscapeMode.Ascii,
-                            "identifier": EscapeMode.Identifier
+                            "unicode": Charset.Unicode,
+                            "ascii": Charset.Ascii,
+                            "identifier": Charset.Identifier
                         }[value];
                     except:
                         sys.stderr.write("No such charset: {}\n".format(value))
