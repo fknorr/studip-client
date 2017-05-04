@@ -79,6 +79,9 @@ class View:
         return self.id and self.format and self.escape and self.charset
 
 
+class DatabaseVersionError(Exception):
+    pass
+
 class QueryError(Exception):
     pass
 
@@ -94,23 +97,25 @@ class Database:
         # delete the database and start over
         connect(self)
         db_version, = self.query("PRAGMA user_version", expected_rows=1)[0]
-        if db_version != self.schema_version:
-            if db_version != 0:
+        if db_version < self.schema_version:
+            if db_version == 9:
+                self.query_script_file("migrate-9-11.sql")
+            elif db_version != 0:
+                print("Could not migrate database. Run \"studip clear-cache\" to reset DB. " \
+                        + "This will reset all views.")
                 self.conn.close()
-                print("Clearing cache: DB file version out of date")
-                os.remove(file_name)
-                connect(self)
+                raise DatabaseVersionError()
 
-            # At this point, the database is definitely empty.
-            self.query("PRAGMA user_version = " + str(self.schema_version), expected_rows=0)
+                self.query("PRAGMA user_version = " + str(self.schema_version), expected_rows=0)
 
-            # Create all tables, views and triggers
-            script_dir = os.path.dirname(os.path.realpath(__file__))
-            with open(script_dir + "/setup.sql", "r") as file:
-                init_script = file.read()
-
-            self.query_script(init_script)
-
+            if db_version == 0: # Empty database
+                # Create all tables, views and triggers
+                self.query_script_file("setup.sql")
+        elif db_version > self.schema_version:
+            print("The client database was created by a more recent version of studip-client" \
+                    + " - please update or run \"studip clear-cache\"")
+            self.conn.close()
+            raise DatabaseVersionError()
 
     def query(self, sql, expected_rows=-1, *args, **kwargs):
         cursor = self.conn.cursor()
@@ -132,7 +137,15 @@ class Database:
             return rows
 
     def query_script(self, sql):
-        self.conn.cursor().executescript(sql)
+        return self.conn.cursor().executescript(sql)
+
+
+    def query_script_file(self, name):
+        script_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "sql")
+        with open(os.path.join(script_dir, name), "r") as file:
+            init_script = file.read()
+        return self.query_script(init_script)
+
 
     def query_multiple(self, sql, args):
         self.conn.cursor().executemany(sql, args)
