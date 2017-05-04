@@ -215,8 +215,17 @@ class Session:
 
         for i, file in enumerate(pending_files):
             file_path = path.join(files_dir, file.id)
-            if not file.local_date or not path.isfile(file_path) \
-                    or file.local_date != file.remote_date:
+            date_mismatch = not file.local_date or file.local_date != file.remote_date
+
+            if date_mismatch or not path.isfile(file_path):
+                if path.isfile(file_path) and date_mismatch:
+                    base_path = file_path
+                    v = 1
+                    file_path = "{}.{}".format(base_path, v)
+                    while path.isfile(file_path):
+                        v += 1
+                        file_path = "{}.{}".format(base_path, v)
+
                 if first_file:
                     print()
                     first_file = False
@@ -238,6 +247,6 @@ class Session:
                 timestamp = time.mktime(file.local_date.timetuple())
                 os.utime(file_path, (timestamp, timestamp))
 
-                self.db.update_file(file)
+                self.db.update_file_local_date(file)
                 self.db.commit()
 

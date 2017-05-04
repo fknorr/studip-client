@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS files (
     remote_date TIMESTAMP,
     copyrighted BOOLEAN NOT NULL DEFAULT 0,
     local_date TIMESTAMP,
+    version INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (id ASC),
     FOREIGN KEY (folder) REFERENCES folders(id)
 ) WITHOUT ROWID;
@@ -113,7 +114,8 @@ CREATE VIEW IF NOT EXISTS file_details AS
     SELECT f.id AS id, c.id AS course_id, s.name AS course_semester, c.name AS course_name,
             c.type AS course_type, p.path AS path, f.name AS name, f.extension AS extension,
             f.author AS author, f.description AS description, f.remote_date AS remote_date,
-            f.copyrighted AS copyrighted, f.local_date as local_date, c.sync AS sync
+            f.copyrighted AS copyrighted, f.local_date as local_date, f.version AS version,
+            c.sync AS sync
     FROM files AS f
     INNER JOIN folder_paths AS p ON f.folder = p.folder
     INNER JOIN courses AS c ON p.course = c.id

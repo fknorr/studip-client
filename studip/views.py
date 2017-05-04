@@ -49,7 +49,10 @@ class ViewSynchronizer:
         fetched_files = []
         for file in self.db.list_files(full=True, select_sync_metadata_only=False,
                 select_sync_no=False):
-            abs_path = path.join(self.files_dir, file.id)
+            file_name = file.id
+            if file.version > 0:
+                file_name += "." + str(file.version)
+            abs_path = path.join(self.files_dir, file_name)
             if path.isfile(abs_path):
                 file.inode = os.lstat(abs_path).st_ino
                 fetched_files.append(file)
@@ -114,6 +117,11 @@ class ViewSynchronizer:
                 if short_path[0] == "Allgemeiner Dateiordner":
                     short_path = short_path[1:]
 
+                extension = ("." + file.extension) if file.extension else ""
+                if file.version > 0:
+                    extension = fs_escape(" (StudIP Version {})".format(file.version + 1)) \
+                            + extension
+
                 tokens = {
                     "semester": fs_escape(file.course_semester),
                     "course-id": file.course,
@@ -125,7 +133,7 @@ class ViewSynchronizer:
                     "short-path": make_path(short_path),
                     "id": file.id,
                     "name": fs_escape(file.name),
-                    "ext": ("." + file.extension) if file.extension else "",
+                    "ext": extension,
                     "description": fs_escape(file.description),
                     "descr-no-ext": fs_escape(descr_no_ext),
                     "author": fs_escape(file.author),
@@ -153,7 +161,10 @@ class ViewSynchronizer:
                     if file.copyrighted:
                         copyrighted_files.append(rel_path)
 
-                    os.link(path.join(self.files_dir, file.id), abs_path)
+                    file_name = file.id
+                    if file.version > 0:
+                        file_name += "." + str(file.version)
+                    os.link(path.join(self.files_dir, file_name), abs_path)
                     self.db.add_checkout(self.view.id, file.id)
 
         finally:

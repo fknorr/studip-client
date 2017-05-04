@@ -32,7 +32,7 @@ class Course:
 class File:
     def __init__(self, id, course=None, course_semester=None, course_name=None, course_type=None,
             path=None, name=None, extension=None, author=None, description=None, remote_date=None,
-            copyrighted=False, local_date=None):
+            copyrighted=False, local_date=None, version=None):
         self.id = id
         self.course = course
         self.course_semester = course_semester
@@ -46,6 +46,7 @@ class File:
         self.remote_date = remote_date
         self.copyrighted = copyrighted
         self.local_date = local_date
+        self.version = version
 
     def complete(self):
         return self.id and self.course and self.path and self.name and self.remote_date
@@ -83,7 +84,7 @@ class QueryError(Exception):
 
 
 class Database:
-    schema_version = 10
+    schema_version = 11
 
     def __init__(self, file_name):
         def connect(self):
@@ -203,13 +204,14 @@ class Database:
         if full:
             rows = self.query("""
                     SELECT id, course_id, course_semester, course_name, course_type, path, name,
-                        extension, author, description, remote_date, copyrighted, local_date
+                        extension, author, description, remote_date, copyrighted, local_date,
+                        version
                     FROM file_details
                     WHERE sync IN ({});
                 """.format(", ".join(sync_modes)))
             # Path is encoded as the string representation of a python list
-            return [ File(i, j, s, c, o, ast.literal_eval(path), n, e, a, d, t, y, l)
-                    for i, j, s, c, o, path, n, e, a, d, t, y, l in rows ]
+            return [ File(i, j, s, c, o, ast.literal_eval(path), n, e, a, d, t, y, l, v)
+                    for i, j, s, c, o, path, n, e, a, d, t, y, l, v in rows ]
 
         else:
             rows = self.query("""
@@ -250,8 +252,8 @@ class Database:
         parent = self.create_parent_for_file(file)
         self.query("""
                 INSERT INTO files (id, folder, name, extension, author, description, remote_date,
-                    copyrighted, local_date)
-                VALUES (:id, :par, :name, :ext, :auth, :descr, :creat, :copy, :local);
+                    copyrighted, local_date, version)
+                VALUES (:id, :par, :name, :ext, :auth, :descr, :creat, :copy, :local, 0);
             """, id=file.id, par=parent, name=file.name, ext=file.extension, auth=file.author,
                 descr=file.description, creat=file.remote_date, copy=file.copyrighted,
                 local=file.local_date, expected_rows=0)
@@ -263,11 +265,23 @@ class Database:
                 UPDATE files
                 SET folder = :par, name = :name, extension = :ext, author = :auth,
                     description = :descr, remote_date = :creat, copyrighted = :copy,
-                    local_date = :local
+                    local_date = :local, version = version + 1
                 WHERE id = :id;
             """, id=file.id, par=parent, name=file.name, ext=file.extension, auth=file.author,
                 descr=file.description, creat=file.remote_date, copy=file.copyrighted,
                 local=file.local_date, expected_rows=0)
+        self.query("""
+                DELETE FROM checkouts
+                WHERE file=:id
+            """, id=file.id, expected_rows=0)
+
+
+    def update_file_local_date(self, file):
+        self.query("""
+                UPDATE files
+                SET local_date = :local
+                WHERE id = :id
+            """, id=file.id, local=file.local_date, expected_rows=0)
 
 
     def list_views(self, full=False):
