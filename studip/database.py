@@ -218,8 +218,7 @@ class Database:
                 """.format(", ".join(sync_modes)))
             return [id for (id,) in rows]
 
-
-    def add_file(self, file):
+    def create_parent_for_file(self, file):
         rows = self.query("""
                 SELECT root FROM courses
                 WHERE id = :course
@@ -242,10 +241,26 @@ class Database:
                 rows = query_subdirectory()
             parent, = rows[0]
 
+        return parent
+
+
+    def add_file(self, file):
+        parent = self.create_parent_for_file(file)
         self.query("""
                 INSERT INTO files (id, folder, name, extension, author, description, created,
                     copyrighted)
                 VALUES (:id, :par, :name, :ext, :auth, :descr, :creat, :copy);
+            """, id=file.id, par=parent, name=file.name, ext=file.extension, auth=file.author,
+                descr=file.description, creat=file.created, copy=file.copyrighted, expected_rows=0)
+
+
+    def update_file(self, file):
+        parent = self.create_parent_for_file(file)
+        self.query("""
+                UPDATE files
+                SET folder = :par, name = :name, extension = :ext, author = :auth,
+                    description = :descr, created = :creat, copyrighted = :copy
+                WHERE id = :id;
             """, id=file.id, par=parent, name=file.name, ext=file.extension, auth=file.author,
                 descr=file.description, creat=file.created, copy=file.copyrighted, expected_rows=0)
 
