@@ -31,8 +31,8 @@ class Course:
 
 class File:
     def __init__(self, id, course=None, course_semester=None, course_name=None, course_type=None,
-            path=None, name=None, extension=None, author=None, description=None, created=None,
-            copyrighted=False):
+            path=None, name=None, extension=None, author=None, description=None, remote_date=None,
+            copyrighted=False, local_date=None):
         self.id = id
         self.course = course
         self.course_semester = course_semester
@@ -43,11 +43,12 @@ class File:
         self.extension = extension
         self.author = author
         self.description = description
-        self.created = created
+        self.remote_date = remote_date
         self.copyrighted = copyrighted
+        self.local_date = local_date
 
     def complete(self):
-        return self.id and self.course and self.path and self.name and self.created
+        return self.id and self.course and self.path and self.name and self.remote_date
 
 
 class Folder:
@@ -82,7 +83,7 @@ class QueryError(Exception):
 
 
 class Database:
-    schema_version = 9
+    schema_version = 10
 
     def __init__(self, file_name):
         def connect(self):
@@ -202,13 +203,13 @@ class Database:
         if full:
             rows = self.query("""
                     SELECT id, course_id, course_semester, course_name, course_type, path, name,
-                        extension, author, description, created, copyrighted
+                        extension, author, description, remote_date, copyrighted, local_date
                     FROM file_details
                     WHERE sync IN ({});
                 """.format(", ".join(sync_modes)))
             # Path is encoded as the string representation of a python list
-            return [ File(i, j, s, c, o, ast.literal_eval(path), n, e, a, d, t, y)
-                    for i, j, s, c, o, path, n, e, a, d, t, y in rows ]
+            return [ File(i, j, s, c, o, ast.literal_eval(path), n, e, a, d, t, y, l)
+                    for i, j, s, c, o, path, n, e, a, d, t, y, l in rows ]
 
         else:
             rows = self.query("""
@@ -217,6 +218,7 @@ class Database:
                     WHERE sync IN ({});
                 """.format(", ".join(sync_modes)))
             return [id for (id,) in rows]
+
 
     def create_parent_for_file(self, file):
         rows = self.query("""
@@ -247,11 +249,12 @@ class Database:
     def add_file(self, file):
         parent = self.create_parent_for_file(file)
         self.query("""
-                INSERT INTO files (id, folder, name, extension, author, description, created,
-                    copyrighted)
-                VALUES (:id, :par, :name, :ext, :auth, :descr, :creat, :copy);
+                INSERT INTO files (id, folder, name, extension, author, description, remote_date,
+                    copyrighted, local_date)
+                VALUES (:id, :par, :name, :ext, :auth, :descr, :creat, :copy, :local);
             """, id=file.id, par=parent, name=file.name, ext=file.extension, auth=file.author,
-                descr=file.description, creat=file.created, copy=file.copyrighted, expected_rows=0)
+                descr=file.description, creat=file.remote_date, copy=file.copyrighted,
+                local=file.local_date, expected_rows=0)
 
 
     def update_file(self, file):
@@ -259,10 +262,12 @@ class Database:
         self.query("""
                 UPDATE files
                 SET folder = :par, name = :name, extension = :ext, author = :auth,
-                    description = :descr, created = :creat, copyrighted = :copy
+                    description = :descr, remote_date = :creat, copyrighted = :copy,
+                    local_date = :local
                 WHERE id = :id;
             """, id=file.id, par=parent, name=file.name, ext=file.extension, auth=file.author,
-                descr=file.description, creat=file.created, copy=file.copyrighted, expected_rows=0)
+                descr=file.description, creat=file.remote_date, copy=file.copyrighted,
+                local=file.local_date, expected_rows=0)
 
 
     def list_views(self, full=False):

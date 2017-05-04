@@ -370,7 +370,7 @@ class FileDetailsParser(HTMLParser):
             self.state = State.in_open_div
             date_str = compact(self.current_date)
             try:
-                self.file.created = datetime.strptime(date_str, "%d.%m.%Y - %H:%M")
+                self.file.remote_date = datetime.strptime(date_str, "%d.%m.%Y - %H:%M")
             except ValueError:
                 pass
 

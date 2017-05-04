@@ -166,10 +166,10 @@ class Session:
 
                 new_files = [ file_id for file_id, _ in file_list if file_id not in db_file_dict ]
                 updated_files = [ file_id for file_id, date in file_list
-                        if file_id  in db_file_dict and db_file_dict[file_id].created != date ]
+                        if file_id  in db_file_dict and db_file_dict[file_id].remote_date != date ]
 
                 if len(new_files) > 0:
-                    new_files_str = ("" if last_course_synced else "\n") + len(new_files)
+                    new_files_str = ("" if last_course_synced else "\n") + str(len(new_files))
                     last_course_synced = True
                 else:
                     new_files_str = "No"
@@ -215,7 +215,8 @@ class Session:
 
         for i, file in enumerate(pending_files):
             file_path = path.join(files_dir, file.id)
-            if not path.isfile(file_path):
+            if not file.local_date or not path.isfile(file_path) \
+                    or file.local_date != file.remote_date:
                 if first_file:
                     print()
                     first_file = False
@@ -231,6 +232,12 @@ class Session:
 
                 with open(file_path, "wb") as writer:
                     writer.write(r.content)
-                    timestamp = time.mktime(file.created.timetuple())
 
+                file.local_date = file.remote_date
+
+                timestamp = time.mktime(file.local_date.timetuple())
                 os.utime(file_path, (timestamp, timestamp))
+
+                self.db.update_file(file)
+                self.db.commit()
+

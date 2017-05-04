@@ -129,7 +129,7 @@ class ViewSynchronizer:
                     "description": fs_escape(file.description),
                     "descr-no-ext": fs_escape(descr_no_ext),
                     "author": fs_escape(file.author),
-                    "time": fs_escape(str(file.created))
+                    "time": fs_escape(str(file.local_date))
                 }
 
                 rel_path = format_path(tokens)
