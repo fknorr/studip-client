@@ -1,0 +1,5 @@
+- Rename "view show [n]" to "view list" showing a table similar to "course show" (breaking change)
+- Make studip-client use cwd instead of the last directory (stateless) (breaking change)
+- Course and file reference tracking:
+    - Allow selecting courses to sync per view
+    - gc files that aren't referenced by any view
