@@ -290,18 +290,23 @@ class Application:
 
         self.database.commit()
 
+
+    def show_course_table(self, courses):
+        abbrev_width = max(len("abbrev"), max(len(abbreviate_course(c.name)) for c in courses))
+        fmt = "{:" + str(abbrev_width) + "} | {:50} | {:25} | {:4}"
+        print(fmt.format("abbrev", "name", "type", "sync"))
+        print(fmt.format("", "", "", "").replace(" ", "-").replace("|", "+"))
+        for c in courses:
+            print(fmt.format(abbreviate_course(c.name), ellipsize(c.name, 50),
+                    ellipsize(c.type, 25), "yes" if c.sync == SyncMode.Full else "no"))
+
+
     def edit_courses(self):
         courses = self.database.list_courses(full=True)
 
         course_op = self.command_line["course_op"]
         if course_op == "list":
-            abbrev_width = max(len("abbrev"), max(len(abbreviate_course(c.name)) for c in courses))
-            fmt = "{:" + str(abbrev_width) + "} | {:50} | {:25} | {:4}"
-            print(fmt.format("abbrev", "name", "type", "sync"))
-            print(fmt.format("", "", "", "").replace(" ", "-").replace("|", "+"))
-            for c in courses:
-                print(fmt.format(abbreviate_course(c.name), ellipsize(c.name, 50),
-                        ellipsize(c.type, 25), "yes" if c.sync == SyncMode.Full else "no"))
+            self.show_course_table(courses)
         else:
             try:
                 course = next(c for c in courses
@@ -321,6 +326,7 @@ class Application:
 
             self.database.update_course(course)
             self.database.commit()
+            self.show_course_table([course])
 
 
     def show_usage(self, out):
