@@ -89,7 +89,6 @@ class ViewSynchronizer:
         if not self.view:
             raise SessionError("View does not exist")
 
-        first_file = True
         modified_folders = set() 
         copyrighted_files = []
 
@@ -102,7 +101,8 @@ class ViewSynchronizer:
                 raise SessionError("Invalid path format: " + path_format)
 
         try:
-            for i, file in enumerate(self.new_files):
+            pending_files = []
+            for file in self.new_files:
                 def make_path(folders):
                     return path.join(*map(fs_escape, folders)) if folders else ""
 
@@ -141,20 +141,23 @@ class ViewSynchronizer:
                     folder = path.dirname(folder)
                 
                 abs_path = path.join(self.view_dir, rel_path)
-                os.makedirs(path.dirname(abs_path), exist_ok=True)
-
                 if not path.isfile(abs_path):
-                    if first_file:
-                        print()
-                        first_file = False
-                    print("Checking out file {}/{}: {}...".format(i, len(self.existing_files),
-                            ellipsize(file.description, 50)))
+                    pending_files.append((file, rel_path, abs_path))
 
-                    if file.copyrighted:
-                        copyrighted_files.append(rel_path)
+            first_file = True
+            for i, (file, rel_path, abs_path) in enumerate(pending_files):
+                if first_file:
+                    print()
+                    first_file = False
+                print("Checking out file {}/{}: {}...".format(i+1, len(pending_files),
+                        ellipsize(file.description, 50)))
 
-                    os.link(path.join(self.files_dir, file.id), abs_path)
-                    self.db.add_checkout(self.view.id, file.id)
+                if file.copyrighted:
+                    copyrighted_files.append(rel_path)
+
+                os.makedirs(path.dirname(abs_path), exist_ok=True)
+                os.link(path.join(self.files_dir, file.id), abs_path)
+                self.db.add_checkout(self.view.id, file.id)
 
         finally:
             self.db.commit()

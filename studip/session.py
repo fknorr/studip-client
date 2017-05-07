@@ -197,27 +197,27 @@ class Session:
         files_dir = path.join(self.sync_dir, ".studip", "files")
         os.makedirs(files_dir, exist_ok=True)
 
-        pending_files = self.db.list_files(full=True, select_sync_metadata_only=False,
+        sync_files = self.db.list_files(full=True, select_sync_metadata_only=False,
                 select_sync_no=False)
+        pending_files = [(f, p) for f, p in ((f, path.join(files_dir, f.id)) for f in sync_files)
+                if not path.isfile(p)]
 
-        for i, file in enumerate(pending_files):
-            file_path = path.join(files_dir, file.id)
-            if not path.isfile(file_path):
-                if first_file:
-                    print()
-                    first_file = False
-                print("Fetching file {}/{}: {}...".format(i+1, len(pending_files),
-                        ellipsize(file.description, 50)))
+        for i, (file, file_path) in enumerate(pending_files):
+            if first_file:
+                print()
+                first_file = False
+            print("Fetching file {}/{}: {}...".format(i+1, len(pending_files),
+                    ellipsize(file.description, 50)))
 
-                url = self.studip_url("/studip/sendfile.php?force_download=1&type=0&" \
-                        + urlencode({"file_id": file.id, "file_name": file.name }))
-                try:
-                    r = self.http.get(url)
-                except RequestException as e:
-                    raise SessionError("Unable to download file {}: {}".format(file.name, e))
+            url = self.studip_url("/studip/sendfile.php?force_download=1&type=0&" \
+                    + urlencode({"file_id": file.id, "file_name": file.name }))
+            try:
+                r = self.http.get(url)
+            except RequestException as e:
+                raise SessionError("Unable to download file {}: {}".format(file.name, e))
 
-                with open(file_path, "wb") as writer:
-                    writer.write(r.content)
-                    timestamp = time.mktime(file.created.timetuple())
+            with open(file_path, "wb") as writer:
+                writer.write(r.content)
+                timestamp = time.mktime(file.created.timetuple())
 
-                os.utime(file_path, (timestamp, timestamp))
+            os.utime(file_path, (timestamp, timestamp))
