@@ -155,7 +155,7 @@ def parse_semester_list(html):
 
 class CourseListParser(HTMLParser):
     State = IntEnum("State", "before_sem before_thead_end table_caption before_tr "
-        "tr td_group td_img td_id td_name after_td")
+        "tr td_group td_img td_id td_name after_td a_name")
 
     def __init__(self):
         super().__init__()
@@ -184,6 +184,7 @@ class CourseListParser(HTMLParser):
         elif self.state == State.td_name and tag == "a":
             attrs = dict(attrs)
             self.current_id = get_url_field(attrs["href"], "auswahl")
+            self.state = State.a_name
 
     def handle_endtag(self, tag):
         State = CourseListParser.State
@@ -195,6 +196,9 @@ class CourseListParser(HTMLParser):
         elif self.state == State.table_caption:
             if tag == "caption":
                 self.state = State.before_thead_end
+        elif self.state == State.a_name:
+            if tag == "a":
+                self.state = State.td_name
         elif self.state == State.after_td:
             if tag == "tr":
                 full_name = compact(self.current_name)
@@ -213,7 +217,7 @@ class CourseListParser(HTMLParser):
         State = CourseListParser.State
         if self.state == State.td_id:
             self.current_number += data
-        elif self.state == State.td_name:
+        elif self.state == State.a_name:
             self.current_name += data
         elif self.state == State.table_caption:
             self.current_semester += data
