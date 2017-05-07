@@ -5,10 +5,10 @@ from base64 import b64encode, b64decode
 from errno import ENOENT
 
 from .config import Config
-from .database import Database, View, QueryError
-from .util import prompt_choice, encrypt_password, decrypt_password, Charset, EscapeMode
+from .database import Database, View, QueryError, SyncMode
+from .util import prompt_choice, encrypt_password, decrypt_password, Charset, EscapeMode, ellipsize
 from .session import Session, SessionError, LoginError
-from .views import ViewSynchronizer
+from .views import ViewSynchronizer, abbreviate_course
 
 
 class ApplicationExit(BaseException):
@@ -294,29 +294,57 @@ class Application:
         courses = self.database.list_courses(full=True)
 
         course_op = self.command_line["course_op"]
-        if course_op == "show":
-            print("\n".join(v.type + " " + v.name for v in courses))
+        if course_op == "list":
+            abbrev_width = max(len("abbrev"), max(len(abbreviate_course(c.name)) for c in courses))
+            fmt = "{:" + str(abbrev_width) + "} | {:50} | {:25} | {:4}"
+            print(fmt.format("abbrev", "name", "type", "sync"))
+            print(fmt.format("", "", "", "").replace(" ", "-").replace("|", "+"))
+            for c in courses:
+                print(fmt.format(abbreviate_course(c.name), ellipsize(c.name, 50),
+                        ellipsize(c.type, 25), "yes" if c.sync == SyncMode.Full else "no"))
+        else:
+            try:
+                course = next(c for c in courses
+                        if abbreviate_course(c.name) == self.command_line["course_abbrev"])
+            except StopIteration:
+                print("No such course.")
+                raise ApplicationExit()
+
+            if course_op == "sync":
+                course.sync = SyncMode.Full if self.command_line["course_sync"] == "on" \
+                        else SyncMode.NoSync
+            elif course_op == "set-name":
+                course.name = self.command_line["course_new_id"]
+            elif course_op == "set-abbrev":
+                print("Not implemented!")
+                raise ApplicationExit()
+
+            self.database.update_course(course)
+            self.database.commit()
+
 
     def show_usage(self, out):
         out.write(
-            "Usage: {} <operation> <parameters>\n\n"
-            "Synchronization operations:\n"
+            "Usage: {} <operation> <parameters>\n"
+            "\nSynchronization operations:\n"
             "    update        Update course database from Stud.IP\n"
             "    fetch         Download missing files from known database\n"
             "    checkout      Checkout files into views\n"
             "    sync          <update>, then <fetch>, then <checkout>\n"
             "    clear-cache   Clear local course and file database\n"
-            "    view <...>    Show and modify views\n"
-            "    course <...>  Show and change synchronized courses\n"
-            "    help          Show this synopsis\n\n"
-            "Commands for showing and modifying views:\n"
+            "\nCommands for showing and modifying views:\n"
             "    view show [<name>]\n"
             "    view add <name> [<key> <value>]...\n"
             "    view rm [-f] <name>\n"
-            "    view reset-deleted [<name>]\n\n"
-            "Commands for showing and changing courses:\n"
-            "    course show\n"
-            "Possible global parameters:\n"
+            "    view reset-deleted [<name>]\n"
+            "\nCommands for showing and changing courses:\n"
+            "    course list\n"
+            "    course sync <abbrev> on|off\n"
+            "    course set-name <abbrev> <new-name>\n"
+            "    course set-abbrev <abbrev> <new-abbrev>\n"
+            "\nGeneral commands:\n"
+            "    help          Show this synopsis\n"
+            "\nPossible global parameters:\n"
             "    -d <dir>      Sync directory, assuming most recent one if not given\n"
             .format(sys.argv[0]))
 
@@ -375,10 +403,20 @@ class Application:
             if len(plain) < 1:
                 return False
             else:
-                self.command_line["course_op"] = view_op = plain[0]
-                if view_op in [ "show" ]:
+                self.command_line["course_op"] = course_op = plain[0]
+                if course_op in [ "list" ]:
                     if len(plain) != 1:
                         return False
+                elif course_op in [ "sync", "set-name", "set-abbrev" ]:
+                    if len(plain) != 3:
+                        return False
+                    self.command_line["course_abbrev"] = plain[1]
+                    if course_op == "sync":
+                        if plain[2] not in [ "on", "off" ]:
+                            return False
+                        self.command_line["course_sync"] = plain[2]
+                    elif course_op in [ "set-name", "set-abbrev" ]:
+                        self.command_line["course_new_id"] = plain[2]
                 else:
                     return False
         else:

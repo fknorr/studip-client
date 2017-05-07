@@ -185,6 +185,15 @@ class Database:
                 type=course.type, sync=int(course.sync), expected_rows=0)
 
 
+    def update_course(self, course):
+        self.query("""
+                UPDATE courses
+                SET number=:num, name=:name, type=:type, sync=:sync
+                WHERE id=:id;
+            """, id=course.id, num=course.number, name=course.name,
+                type=course.type, sync=int(course.sync), expected_rows=0)
+
+
     def delete_course(self, course):
         self.query("""
                 DELETE FROM courses
