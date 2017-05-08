@@ -1,4 +1,4 @@
-import sqlite3, os, ast
+import sqlite3, os, ast, shutil
 from enum import IntEnum
 
 from .util import EscapeMode, Charset
@@ -97,8 +97,15 @@ class Database:
         db_version, = self.query("PRAGMA user_version", expected_rows=1)[0]
         if db_version < self.schema_version:
             if db_version == 9:
+                # Disconnect and reconnect to create a backup
+                self.conn.close()
+                base_name, ext = os.path.splitext(file_name)
+                backup_file = "{}.backup-schema{}{}".format(base_name, db_version, ext)
+                shutil.copyfile(file_name, backup_file)
+                connect(self)
                 self.query_script_file("migrate-9-11.sql")
-                print("Migrated database from version 9")
+                print("Migrated database from version {} to {}, backup saved to {}".format(
+                        db_version, self.schema_version, backup_file))
             elif db_version != 0:
                 print("Could not migrate database. Run \"studip clear-cache\" to reset DB. " \
                         + "This will reset all views.")
