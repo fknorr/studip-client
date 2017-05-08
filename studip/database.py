@@ -63,10 +63,8 @@ class Folder:
         return self.id and self.name and (self.parent or self.course)
 
 
-
-
 class View:
-    def __init__(self, id, name="view", format="{course} ({type})/{path}/{name}.{ext}",
+    def __init__(self, id, name=None, format="{course}/{type}/{short-path}/{name}{ext}",
             base=None, escape=EscapeMode.Similar, charset=Charset.Unicode):
         self.id = id
         self.name = name
@@ -100,17 +98,19 @@ class Database:
         if db_version < self.schema_version:
             if db_version == 9:
                 self.query_script_file("migrate-9-11.sql")
+                print("Migrated database from version 9")
             elif db_version != 0:
                 print("Could not migrate database. Run \"studip clear-cache\" to reset DB. " \
                         + "This will reset all views.")
                 self.conn.close()
                 raise DatabaseVersionError()
 
-                self.query("PRAGMA user_version = " + str(self.schema_version), expected_rows=0)
+            self.query("PRAGMA user_version = " + str(self.schema_version), expected_rows=0)
 
             if db_version == 0: # Empty database
                 # Create all tables, views and triggers
                 self.query_script_file("setup.sql")
+                self.add_view(View(0, "default"))
         elif db_version > self.schema_version:
             print("The client database was created by a more recent version of studip-client" \
                     + " - please update or run \"studip clear-cache\"")

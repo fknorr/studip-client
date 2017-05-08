@@ -9,9 +9,6 @@ CREATE TABLE IF NOT EXISTS views (
     CHECK(base != "" AND base != "." AND base != "..")
 );
 
-INSERT INTO views
-VALUES (0, "default", "{course}/{type}/{short-path}/{name}{ext}", NULL, 1, 1);
-
 CREATE TABLE IF NOT EXISTS semesters (
     id CHAR(32) NOT NULL,
     name VARCHAR(16) NOT NULL,
