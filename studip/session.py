@@ -136,7 +136,9 @@ class Session:
 
         sync_courses = self.db.list_courses(full=True, select_sync_no=False)
         last_course_synced = False
-        db_files = self.db.list_files()
+        db_files = self.db.list_files(full=True, select_sync_yes=True,
+                select_sync_metadata_only=True, select_sync_no=False)
+        db_file_dict = dict((f.id, f) for f in db_files)
 
         concurrency = int(self.config["connection", "update_concurrency"])
         with SessionPool(concurrency, self.http.cookies) as pool:
@@ -162,18 +164,26 @@ class Session:
                 if last_course_synced:
                     print()
 
-                new_files = [ file_id for file_id in file_list if file_id not in db_files ]
-                if len(new_files) > 0 :
-                    if not last_course_synced:
-                        print()
-                    print(len(new_files), end="")
+                new_files = [ file_id for file_id, _ in file_list if file_id not in db_file_dict ]
+                updated_files = [ file_id for file_id, date in file_list
+                        if file_id  in db_file_dict and db_file_dict[file_id].remote_date != date ]
+
+                if len(new_files) > 0:
+                    new_files_str = ("" if last_course_synced else "\n") + str(len(new_files))
                     last_course_synced = True
                 else:
-                    print("No", end="")
+                    new_files_str = "No"
                     last_course_synced = False
-                print(" new files for {} {} ".format(course.type, course.name))
 
-                for file_id in new_files:
+                updated_files_str = ""
+                if len(updated_files) > 0:
+                    updated_files_str = ", {} updated ".format(len(updated_files))
+
+                print("{} new{} file(s) for {} {} ".format(new_files_str, updated_files_str,
+                        course.type, course.name))
+
+                files_to_fetch = new_files + updated_files
+                for file_id in files_to_fetch:
                     pool.defer_request("GET", folder_url + "&open=" + file_id)
                 pool.done()
 
@@ -183,10 +193,13 @@ class Session:
                     except ParserError:
                         raise SessionError("Unable to parse file details")
 
-                    print("Fetched metadata for file {}/{}: ".format(i+1, len(new_files)),
+                    print("Fetched metadata for file {}/{}: ".format(i+1, len(files_to_fetch)),
                             end="", flush=True)
                     if file.complete():
-                        self.db.add_file(file)
+                        if file.id in new_files:
+                            self.db.add_file(file)
+                        else:
+                            self.db.update_file(file)
                         print(" " + file.description)
                     else:
                         print(" <bad format>")
@@ -199,10 +212,21 @@ class Session:
 
         sync_files = self.db.list_files(full=True, select_sync_metadata_only=False,
                 select_sync_no=False)
-        pending_files = [(f, p) for f, p in ((f, path.join(files_dir, f.id)) for f in sync_files)
-                if not path.isfile(p)]
+        sync_file_paths = ((f, path.join(files_dir, f.id)) for f in sync_files)
+        sync_file_updates = ((f, p, path.isfile(p), not f.local_date
+                or f.local_date != f.remote_date) for (f, p) in sync_file_paths)
+        pending_files = [(f, p, exists, update) for (f, p, exists, update) in sync_file_updates
+                if not exists or update]
 
-        for i, (file, file_path) in enumerate(pending_files):
+        for i, (file, file_path, exists, update) in enumerate(pending_files):
+            if exists and update:
+                base_path = file_path
+                v = 1
+                file_path = "{}.{}".format(base_path, v)
+                while path.isfile(file_path):
+                    v += 1
+                    file_path = "{}.{}".format(base_path, v)
+
             if first_file:
                 print()
                 first_file = False
@@ -218,6 +242,12 @@ class Session:
 
             with open(file_path, "wb") as writer:
                 writer.write(r.content)
-                timestamp = time.mktime(file.created.timetuple())
 
+            file.local_date = file.remote_date
+
+            timestamp = time.mktime(file.local_date.timetuple())
             os.utime(file_path, (timestamp, timestamp))
+
+            self.db.update_file_local_date(file)
+            self.db.commit()
+

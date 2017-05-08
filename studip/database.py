@@ -1,4 +1,4 @@
-import sqlite3, os, ast
+import sqlite3, os, ast, shutil
 from enum import IntEnum
 
 from .util import EscapeMode, Charset
@@ -31,8 +31,8 @@ class Course:
 
 class File:
     def __init__(self, id, course=None, course_semester=None, course_name=None, course_type=None,
-            path=None, name=None, extension=None, author=None, description=None, created=None,
-            copyrighted=False):
+            path=None, name=None, extension=None, author=None, description=None, remote_date=None,
+            copyrighted=False, local_date=None, version=None):
         self.id = id
         self.course = course
         self.course_semester = course_semester
@@ -43,11 +43,13 @@ class File:
         self.extension = extension
         self.author = author
         self.description = description
-        self.created = created
+        self.remote_date = remote_date
         self.copyrighted = copyrighted
+        self.local_date = local_date
+        self.version = version
 
     def complete(self):
-        return self.id and self.course and self.path and self.name and self.created
+        return self.id and self.course and self.path and self.name and self.remote_date
 
 
 class Folder:
@@ -61,10 +63,8 @@ class Folder:
         return self.id and self.name and (self.parent or self.course)
 
 
-
-
 class View:
-    def __init__(self, id, name="view", format="{course} ({type})/{path}/{name}.{ext}",
+    def __init__(self, id, name=None, format="{course}/{type}/{short-path}/{name}{ext}",
             base=None, escape=EscapeMode.Similar, charset=Charset.Unicode):
         self.id = id
         self.name = name
@@ -77,12 +77,15 @@ class View:
         return self.id and self.format and self.escape and self.charset
 
 
+class DatabaseVersionError(Exception):
+    pass
+
 class QueryError(Exception):
     pass
 
 
 class Database:
-    schema_version = 9
+    schema_version = 11
 
     def __init__(self, file_name):
         def connect(self):
@@ -92,23 +95,34 @@ class Database:
         # delete the database and start over
         connect(self)
         db_version, = self.query("PRAGMA user_version", expected_rows=1)[0]
-        if db_version != self.schema_version:
-            if db_version != 0:
+        if db_version < self.schema_version:
+            if db_version == 9:
+                # Disconnect and reconnect to create a backup
                 self.conn.close()
-                print("Clearing cache: DB file version out of date")
-                os.remove(file_name)
+                base_name, ext = os.path.splitext(file_name)
+                backup_file = "{}.backup-schema{}{}".format(base_name, db_version, ext)
+                shutil.copyfile(file_name, backup_file)
                 connect(self)
+                self.query_script_file("migrate-9-11.sql")
+                print("Migrated database from version {} to {}, backup saved to {}".format(
+                        db_version, self.schema_version, backup_file))
+            elif db_version != 0:
+                print("Could not migrate database. Run \"studip clear-cache\" to reset DB. " \
+                        + "This will reset all views.")
+                self.conn.close()
+                raise DatabaseVersionError()
 
-            # At this point, the database is definitely empty.
             self.query("PRAGMA user_version = " + str(self.schema_version), expected_rows=0)
 
-            # Create all tables, views and triggers
-            script_dir = os.path.dirname(os.path.realpath(__file__))
-            with open(script_dir + "/setup.sql", "r") as file:
-                init_script = file.read()
-
-            self.query_script(init_script)
-
+            if db_version == 0: # Empty database
+                # Create all tables, views and triggers
+                self.query_script_file("setup.sql")
+                self.add_view(View(0, "default"))
+        elif db_version > self.schema_version:
+            print("The client database was created by a more recent version of studip-client" \
+                    + " - please update or run \"studip clear-cache\"")
+            self.conn.close()
+            raise DatabaseVersionError()
 
     def query(self, sql, expected_rows=-1, *args, **kwargs):
         cursor = self.conn.cursor()
@@ -130,7 +144,15 @@ class Database:
             return rows
 
     def query_script(self, sql):
-        self.conn.cursor().executescript(sql)
+        return self.conn.cursor().executescript(sql)
+
+
+    def query_script_file(self, name):
+        script_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "sql")
+        with open(os.path.join(script_dir, name), "r") as file:
+            init_script = file.read()
+        return self.query_script(init_script)
+
 
     def query_multiple(self, sql, args):
         self.conn.cursor().executemany(sql, args)
@@ -202,13 +224,14 @@ class Database:
         if full:
             rows = self.query("""
                     SELECT id, course_id, course_semester, course_name, course_type, path, name,
-                        extension, author, description, created, copyrighted
+                        extension, author, description, remote_date, copyrighted, local_date,
+                        version
                     FROM file_details
                     WHERE sync IN ({});
                 """.format(", ".join(sync_modes)))
             # Path is encoded as the string representation of a python list
-            return [ File(i, j, s, c, o, ast.literal_eval(path), n, e, a, d, t, y)
-                    for i, j, s, c, o, path, n, e, a, d, t, y in rows ]
+            return [ File(i, j, s, c, o, ast.literal_eval(path), n, e, a, d, t, y, l, v)
+                    for i, j, s, c, o, path, n, e, a, d, t, y, l, v in rows ]
 
         else:
             rows = self.query("""
@@ -219,7 +242,7 @@ class Database:
             return [id for (id,) in rows]
 
 
-    def add_file(self, file):
+    def create_parent_for_file(self, file):
         rows = self.query("""
                 SELECT root FROM courses
                 WHERE id = :course
@@ -242,12 +265,43 @@ class Database:
                 rows = query_subdirectory()
             parent, = rows[0]
 
+        return parent
+
+
+    def add_file(self, file):
+        parent = self.create_parent_for_file(file)
         self.query("""
-                INSERT INTO files (id, folder, name, extension, author, description, created,
-                    copyrighted)
-                VALUES (:id, :par, :name, :ext, :auth, :descr, :creat, :copy);
+                INSERT INTO files (id, folder, name, extension, author, description, remote_date,
+                    copyrighted, local_date, version)
+                VALUES (:id, :par, :name, :ext, :auth, :descr, :creat, :copy, :local, 0);
             """, id=file.id, par=parent, name=file.name, ext=file.extension, auth=file.author,
-                descr=file.description, creat=file.created, copy=file.copyrighted, expected_rows=0)
+                descr=file.description, creat=file.remote_date, copy=file.copyrighted,
+                local=file.local_date, expected_rows=0)
+
+
+    def update_file(self, file):
+        parent = self.create_parent_for_file(file)
+        self.query("""
+                UPDATE files
+                SET folder = :par, name = :name, extension = :ext, author = :auth,
+                    description = :descr, remote_date = :creat, copyrighted = :copy,
+                    local_date = :local, version = version + 1
+                WHERE id = :id;
+            """, id=file.id, par=parent, name=file.name, ext=file.extension, auth=file.author,
+                descr=file.description, creat=file.remote_date, copy=file.copyrighted,
+                local=file.local_date, expected_rows=0)
+        self.query("""
+                DELETE FROM checkouts
+                WHERE file=:id
+            """, id=file.id, expected_rows=0)
+
+
+    def update_file_local_date(self, file):
+        self.query("""
+                UPDATE files
+                SET local_date = :local
+                WHERE id = :id
+            """, id=file.id, local=file.local_date, expected_rows=0)
 
 
     def list_views(self, full=False):
