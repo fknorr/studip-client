@@ -212,21 +212,14 @@ class Session:
 
         sync_files = self.db.list_files(full=True, select_sync_metadata_only=False,
                 select_sync_no=False)
-        sync_file_paths = ((f, path.join(files_dir, f.id)) for f in sync_files)
+        sync_file_paths = ((f, path.join(files_dir, f.id)
+                + ("."  + str(f.version) if f.version > 0 else "")) for f in sync_files)
         sync_file_updates = ((f, p, path.isfile(p), not f.local_date
                 or f.local_date != f.remote_date) for (f, p) in sync_file_paths)
         pending_files = [(f, p, exists, update) for (f, p, exists, update) in sync_file_updates
                 if not exists or update]
 
         for i, (file, file_path, exists, update) in enumerate(pending_files):
-            if exists and update:
-                base_path = file_path
-                v = 1
-                file_path = "{}.{}".format(base_path, v)
-                while path.isfile(file_path):
-                    v += 1
-                    file_path = "{}.{}".format(base_path, v)
-
             if first_file:
                 print()
                 first_file = False
