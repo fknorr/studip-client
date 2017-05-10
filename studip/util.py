@@ -7,6 +7,8 @@ PUNCTUATION_WHITESPACE_RE = re.compile(r"[ _/.,;:\-_#'+*~!^\"$%&/()[\]}{\\?<>|]+
 NON_ASCII_RE = re.compile(r"[^\x00-\x7f]+")
 NON_IDENTIFIER_RE = re.compile(r"[^A-Za-z0-9_]+")
 FS_SPECIAL_CHARS_RE = re.compile(r"[/:]+")
+WORD_SEPARATOR_RE = re.compile(r'[-. _/()]+')
+NUMBER_RE = re.compile(r'^([0-9]+)|([IVXLCDM]+)$')
 
 
 def prompt_choice(prompt, options, default=None):
@@ -78,3 +80,33 @@ def escape_file_name(str, charset, mode):
         # Replace regular '/' by similar looking 'DIVISION SLASH' (U+2215) and ':' by
         # 'RATIO' to create a valid directory name
             return str.replace("/", "\u2215").replace(":", "\u2236")
+
+
+def abbreviate_course_name(name):
+    words = WORD_SEPARATOR_RE.split(name)
+    number = ""
+    abbrev = ""
+    if len(words) > 1 and NUMBER_RE.match(words[-1]):
+        number = words[-1]
+        words = words[0:len(words) - 1]
+    if len(words) < 3:
+        abbrev = "".join(w[0 : min(3, len(w))] for w in words)
+    elif len(words) >= 3:
+        abbrev = "".join(w[0] for w in words if len(w) > 0)
+    return abbrev + number
+
+
+def abbreviate_course_type(type):
+    special_abbrevs = {
+        "Arbeitsgemeinschaft": "AG",
+        "Studien-/Arbeitsgruppe": "SG",
+    }
+    try:
+        return special_abbrevs[type]
+    except KeyError:
+        abbrev = type[0]
+        if type.endswith("seminar"):
+            abbrev += "S"
+        return abbrev
+
+
