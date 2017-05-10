@@ -9,9 +9,6 @@ CREATE TABLE IF NOT EXISTS views (
     CHECK(base != "" AND base != "." AND base != "..")
 );
 
-INSERT INTO views
-VALUES (0, "default", "{course}/{type}/{short-path}/{name}{ext}", NULL, 1, 1);
-
 CREATE TABLE IF NOT EXISTS semesters (
     id CHAR(32) NOT NULL,
     name VARCHAR(16) NOT NULL,
@@ -40,8 +37,10 @@ CREATE TABLE IF NOT EXISTS files (
     extension VARCHAR(32),
     author VARCHAR(64),
     description VARCHAR(256),
-    created TIMESTAMP,
+    remote_date TIMESTAMP,
     copyrighted BOOLEAN NOT NULL DEFAULT 0,
+    local_date TIMESTAMP,
+    version INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (id ASC),
     FOREIGN KEY (folder) REFERENCES folders(id)
 ) WITHOUT ROWID;
@@ -111,8 +110,9 @@ CREATE VIEW IF NOT EXISTS folder_paths AS
 CREATE VIEW IF NOT EXISTS file_details AS
     SELECT f.id AS id, c.id AS course_id, s.name AS course_semester, c.name AS course_name,
             c.type AS course_type, p.path AS path, f.name AS name, f.extension AS extension,
-            f.author AS author, f.description AS description, f.created AS created,
-            f.copyrighted AS copyrighted, c.sync AS sync
+            f.author AS author, f.description AS description, f.remote_date AS remote_date,
+            f.copyrighted AS copyrighted, f.local_date as local_date, f.version AS version,
+            c.sync AS sync
     FROM files AS f
     INNER JOIN folder_paths AS p ON f.folder = p.folder
     INNER JOIN courses AS c ON p.course = c.id
@@ -120,7 +120,7 @@ CREATE VIEW IF NOT EXISTS file_details AS
 
 CREATE VIEW IF NOT EXISTS folder_times AS
     WITH RECURSIVE ctimes (folder, time) AS (
-        SELECT folder, created
+        SELECT folder, remote_date
             FROM files
         UNION ALL
         SELECT folders.parent, ctimes.time

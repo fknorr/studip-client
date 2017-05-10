@@ -49,7 +49,10 @@ class ViewSynchronizer:
         fetched_files = []
         for file in self.db.list_files(full=True, select_sync_metadata_only=False,
                 select_sync_no=False):
-            abs_path = path.join(self.files_dir, file.id)
+            file_name = file.id
+            if file.version > 0:
+                file_name += "." + str(file.version)
+            abs_path = path.join(self.files_dir, file_name)
             if path.isfile(abs_path):
                 file.inode = os.lstat(abs_path).st_ino
                 fetched_files.append(file)
@@ -89,7 +92,6 @@ class ViewSynchronizer:
         if not self.view:
             raise SessionError("View does not exist")
 
-        first_file = True
         modified_folders = set() 
         copyrighted_files = []
 
@@ -102,7 +104,8 @@ class ViewSynchronizer:
                 raise SessionError("Invalid path format: " + path_format)
 
         try:
-            for i, file in enumerate(self.new_files):
+            pending_files = []
+            for file in self.new_files:
                 def make_path(folders):
                     return path.join(*map(fs_escape, folders)) if folders else ""
 
@@ -113,6 +116,11 @@ class ViewSynchronizer:
                 short_path = file.path
                 if short_path[0] == "Allgemeiner Dateiordner":
                     short_path = short_path[1:]
+
+                extension = ("." + file.extension) if file.extension else ""
+                if file.version > 0:
+                    extension = fs_escape(" (StudIP Version {})".format(file.version + 1)) \
+                            + extension
 
                 tokens = {
                     "semester": fs_escape(file.course_semester),
@@ -125,11 +133,11 @@ class ViewSynchronizer:
                     "short-path": make_path(short_path),
                     "id": file.id,
                     "name": fs_escape(file.name),
-                    "ext": ("." + file.extension) if file.extension else "",
+                    "ext": extension,
                     "description": fs_escape(file.description),
                     "descr-no-ext": fs_escape(descr_no_ext),
                     "author": fs_escape(file.author),
-                    "time": fs_escape(str(file.created))
+                    "time": fs_escape(str(file.local_date))
                 }
 
                 rel_path = format_path(tokens)
@@ -141,20 +149,26 @@ class ViewSynchronizer:
                     folder = path.dirname(folder)
                 
                 abs_path = path.join(self.view_dir, rel_path)
-                os.makedirs(path.dirname(abs_path), exist_ok=True)
-
                 if not path.isfile(abs_path):
-                    if first_file:
-                        print()
-                        first_file = False
-                    print("Checking out file {}/{}: {}...".format(i, len(self.existing_files),
-                            ellipsize(file.description, 50)))
+                    pending_files.append((file, rel_path, abs_path))
 
-                    if file.copyrighted:
-                        copyrighted_files.append(rel_path)
+            first_file = True
+            for i, (file, rel_path, abs_path) in enumerate(pending_files):
+                if first_file:
+                    print()
+                    first_file = False
+                print("Checking out file {}/{}: {}...".format(i+1, len(pending_files),
+                        ellipsize(file.description, 50)))
 
-                    os.link(path.join(self.files_dir, file.id), abs_path)
-                    self.db.add_checkout(self.view.id, file.id)
+                if file.copyrighted:
+                    copyrighted_files.append(rel_path)
+
+                file_name = file.id
+                if file.version > 0:
+                    file_name += "." + str(file.version)
+                os.makedirs(path.dirname(abs_path), exist_ok=True)
+                os.link(path.join(self.files_dir, file_name), abs_path)
+                self.db.add_checkout(self.view.id, file.id)
 
         finally:
             self.db.commit()

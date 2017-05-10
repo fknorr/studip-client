@@ -242,14 +242,16 @@ def parse_overview(html):
 
 
 class FileListParser(HTMLParser):
-    State = IntEnum("State", "outside file_0_div")
+    State = IntEnum("State", "outside file_0_div profile_a date_td")
 
     def __init__(self):
         super().__init__()
         State = FileListParser.State
         self.state = State.outside
         self.div_depth = 0
-        self.file_ids = []
+        self.file_meta = []
+        self.current_file_id = None
+        self.current_date = ""
 
     def handle_starttag(self, tag, attrs):
         State = FileListParser.State
@@ -262,11 +264,13 @@ class FileListParser(HTMLParser):
             attrs = dict(attrs)
             if tag == "div":
                 self.div_depth += 1
-            if tag == "a":
-                if "href" in attrs and "sendfile.php" in attrs["href"]:
+            if tag == "a" and "href" in attrs:
+                if "sendfile.php" in attrs["href"]:
                     file_id = get_url_field(attrs["href"], "file_id")
                     if file_id:
-                        self.file_ids.append(file_id)
+                        self.current_file_id = file_id
+                elif "dispatch.php/profile" in attrs["href"]:
+                    self.state = State.profile_a
 
     def handle_endtag(self, tag):
         State = FileListParser.State
@@ -274,10 +278,31 @@ class FileListParser(HTMLParser):
             if self.div_depth > 0:
                 self.div_depth -= 1
             else:
+                file_id = self.current_file_id
+                date_str = compact(self.current_date)
+                date = None
+                if file_id and self.current_date:
+                    try:
+                        date = datetime.strptime(date_str, "%d.%m.%Y - %H:%M")
+                    except:
+                        pass
+                if file_id and date:
+                    self.file_meta.append((file_id, date))
+                self.current_file_id = None
+                self.current_date = ""
                 self.state = State.outside
+        elif tag == "a" and self.state == State.profile_a:
+            self.state = State.date_td
+        elif tag == "td" and self.state == State.date_td:
+            self.state = State.file_0_div
+
+    def handle_data(self, data):
+        State = FileListParser.State
+        if self.state == State.date_td:
+            self.current_date += data
 
 def parse_file_list(html):
-    return create_parser_and_feed(FileListParser, html).file_ids
+    return create_parser_and_feed(FileListParser, html).file_meta
 
 
 class FileDetailsParser(HTMLParser):
@@ -345,7 +370,7 @@ class FileDetailsParser(HTMLParser):
             self.state = State.in_open_div
             date_str = compact(self.current_date)
             try:
-                self.file.created = datetime.strptime(date_str, "%d.%m.%Y - %H:%M")
+                self.file.remote_date = datetime.strptime(date_str, "%d.%m.%Y - %H:%M")
             except ValueError:
                 pass
 
