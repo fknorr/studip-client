@@ -8,7 +8,7 @@ from .config import Config
 from .database import Database, View, QueryError, SyncMode
 from .util import prompt_choice, encrypt_password, decrypt_password, Charset, EscapeMode, ellipsize
 from .session import Session, SessionError, LoginError
-from .views import ViewSynchronizer, abbreviate_course
+from .views import ViewSynchronizer
 
 
 class ApplicationExit(BaseException):
@@ -292,12 +292,12 @@ class Application:
 
 
     def show_course_table(self, courses):
-        abbrev_width = max(len("abbrev"), max(len(abbreviate_course(c.name)) for c in courses))
-        fmt = "{:" + str(abbrev_width) + "} | {:50} | {:25} | {:4}"
-        print(fmt.format("abbrev", "name", "type", "sync"))
-        print(fmt.format("", "", "", "").replace(" ", "-").replace("|", "+"))
+        abbrev_width = max(len("abbrev"), max(len(c.abbrev) for c in courses))
+        fmt = "{:" + str(abbrev_width) + "} | {:50} | {:7} | {:25} | {:4}"
+        print(fmt.format("abbrev", "name", "tabbrev", "type", "sync"))
+        print(fmt.format("", "", "", "", "").replace(" ", "-").replace("|", "+"))
         for c in courses:
-            print(fmt.format(abbreviate_course(c.name), ellipsize(c.name, 50),
+            print(fmt.format(c.abbrev, ellipsize(c.name, 50), c.type_abbrev,
                     ellipsize(c.type, 25), "yes" if c.sync == SyncMode.Full else "no"))
 
 
@@ -309,8 +309,7 @@ class Application:
             self.show_course_table(courses)
         else:
             try:
-                course = next(c for c in courses
-                        if abbreviate_course(c.name) == self.command_line["course_abbrev"])
+                course = next(c for c in courses if c.abbrev == self.command_line["course_abbrev"])
             except StopIteration:
                 print("No such course.")
                 raise ApplicationExit()
@@ -320,9 +319,12 @@ class Application:
                         else SyncMode.NoSync
             elif course_op == "set-name":
                 course.name = self.command_line["course_new_id"]
+            elif course_op == "set-type":
+                course.type = self.command_line["course_new_id"]
             elif course_op == "set-abbrev":
-                print("Not implemented!")
-                raise ApplicationExit()
+                course.abbrev = self.command_line["course_new_id"]
+            elif course_op == "set-tabbrev":
+                course.type_abbrev = self.command_line["course_new_id"]
 
             self.database.update_course(course)
             self.database.commit()
@@ -413,7 +415,8 @@ class Application:
                 if course_op in [ "list" ]:
                     if len(plain) != 1:
                         return False
-                elif course_op in [ "sync", "set-name", "set-abbrev" ]:
+                elif course_op in [ "sync", "set-name", "set-abbrev", "set-type",
+                        "set-tabbrev" ]:
                     if len(plain) != 3:
                         return False
                     self.command_line["course_abbrev"] = plain[1]
@@ -421,7 +424,7 @@ class Application:
                         if plain[2] not in [ "on", "off" ]:
                             return False
                         self.command_line["course_sync"] = plain[2]
-                    elif course_op in [ "set-name", "set-abbrev" ]:
+                    elif course_op in [ "set-name", "set-abbrev", "set-type", "set-tabbrev" ]:
                         self.command_line["course_new_id"] = plain[2]
                 else:
                     return False
