@@ -311,7 +311,11 @@ class Application:
             try:
                 course = next(c for c in courses if c.abbrev == self.command_line["course_abbrev"])
             except StopIteration:
-                print("No such course.")
+                print("Error: No such course.")
+                raise ApplicationExit()
+
+            if len(self.database.list_views(full=False)):
+                print("Error: Please remove all views before editing course metadata.")
                 raise ApplicationExit()
 
             if course_op == "sync":
