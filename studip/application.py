@@ -354,6 +354,8 @@ class Application:
             "    course sync <abbrev> on|off\n"
             "    course set-name <abbrev> <new-name>\n"
             "    course set-abbrev <abbrev> <new-abbrev>\n"
+            "    course set-type <abbrev> <new-type>\n"
+            "    course set-tabbrev <abbrev> <new-type-abbrev>\n"
             "\nGeneral commands:\n"
             "    help          Show this synopsis\n"
             "\nPossible global parameters:\n"
