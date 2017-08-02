@@ -21,6 +21,13 @@ def abbreviate_course(name):
         abbrev = "".join(w[0] for w in words if len(w) > 0)
     return abbrev + number
 
+def lexicalise_semester(semester, short=False):
+    """Takes input of the form "SS 16" or "WS 16/17" and converts it to "2016SS" or "2016WS17"."""
+    if short:
+        return re.sub(r'^(SS|WS) (\d{2})(.(\d{2}))?', r'20\2\1', semester)
+    else:
+        return re.sub(r'^(SS|WS) (\d{2})(.(\d{2}))?', r'20\2\1\4', semester)
+
 def abbreviate_type(type):
     special_abbrevs = {
         "Arbeitsgemeinschaft": "AG",
@@ -124,6 +131,8 @@ class ViewSynchronizer:
 
                 tokens = {
                     "semester": fs_escape(file.course_semester),
+                    "semester-lexical": fs_escape(lexicalise_semester(file.course_semester)),
+                    "semester-lexical-short": fs_escape(lexicalise_semester(file.course_semester, short=True)),
                     "course-id": file.course,
                     "course-abbrev": fs_escape(abbreviate_course(file.course_name)),
                     "course": fs_escape(file.course_name),
@@ -209,6 +218,8 @@ class ViewSynchronizer:
             # Construct a dummy file for extracting the fromatted path
             tokens = {
                 "semester": fs_escape(course.semester),
+                "semester-lexical": fs_escape(lexicalise_semester(course.semester)),
+                "semester-lexical-short": fs_escape(lexicalise_semester(course.semester, short=True)),
                 "course-id": course.id,
                 "course": fs_escape(course.name),
                 "course-abbrev": fs_escape(abbreviate_course(course.name)),
