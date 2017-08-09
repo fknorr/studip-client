@@ -91,6 +91,25 @@ At the moment, the only way to modify _studip-client_'s configuration is by edit
 - `user`: Login credentials. The password will be encrypted with `~/.cache/studip/secret` as the
   key, which means it cannot be edited directly.
 
+Courses
+-------
+
+Courses are added automatically through `update` and can be managed manually at a later point in
+time using the `course` command.
+
+`course list` will print a list of existing courses and their attributes. Cells marked with `*`
+are auto-generated and can be manually set using the editing commands below.
+
+The `course set-*` family of commands modify one or several courses. The range argument refers
+to the first column of `course list` and is of the form `1,3-4,7-9`, meaning that the attribute
+should be set for courses 1, 3, 4, 7, 8 and 9.
+
+- `course set-name <range> <name>` sets the course name
+- `course set-abbrev <range> <abbrev>` sets the course name abbreviation in case the
+auto-generated one is not satisfactory
+- `course set-type <range> <type>` sets the course type, e.g. "Lecture"
+- `course set-tabbrev <range> <tabbrev>` overwrites the course type abbreviation
+
 Views
 -----
 
