@@ -212,14 +212,16 @@ class Database:
                 SELECT c.id, s.name, c.number, c.name, c.abbrev, c.type, c.type_abbrev, c.sync
                 FROM courses AS c
                 INNER JOIN semesters AS s ON s.id = c.semester
-                WHERE c.sync IN ({});
+                WHERE c.sync IN ({})
+                ORDER BY c.name, c.type;
             """.format(", ".join(sync_modes)))
             return [ Course(i, s, n, a, b, t, u, SyncMode(sync))
                     for i, s, n, a, b, t, u, sync in rows ]
         else:
             rows = self.query("""
                 SELECT id FROM courses
-                WHERE sync IN ({});
+                WHERE sync IN ({})
+                ORDER BY name;
             """.format(", ".join(sync_modes)))
             return [ id for (id,) in rows ]
 
@@ -359,12 +361,14 @@ class Database:
             rows = self.query("""
                     SELECT id, name, format, base, esc_mode, charset
                     FROM views
+                    ORDER BY name;
                 """)
             return [ View(i, n, f, b, EscapeMode(e), Charset(c)) for i, n, f, b, e, c in rows ]
         else:
             rows = self.query("""
                     SELECT id
                     FROM views
+                    ORDER BY name;
                 """)
             return [ id for id, in rows ]
 
