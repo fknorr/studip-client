@@ -5,8 +5,9 @@ from base64 import b64encode, b64decode
 from errno import ENOENT
 
 from .config import Config
-from .database import Database, View, QueryError
-from .util import prompt_choice, encrypt_password, decrypt_password, Charset, EscapeMode
+from .database import Database, View, QueryError, SyncMode
+from .util import prompt_choice, expand_int_range, encrypt_password, decrypt_password, Charset, \
+        EscapeMode, ellipsize
 from .session import Session, SessionError, LoginError
 from .views import ViewSynchronizer
 
@@ -291,23 +292,85 @@ class Application:
         self.database.commit()
 
 
+    def show_course_table(self, courses):
+        abbrev_width = max(len("abbrev"), max(len(c.abbrev) for c in courses)+1)
+        fmt = "{:3} | {:" + str(abbrev_width) + "} | {:50} | {:7} | {:25} | {:4}"
+        print(fmt.format("", "abbrev", "name", "tabbrev", "type", "sync"))
+        print(fmt.format("", "", "", "", "", "").replace(" ", "-").replace("|", "+"))
+        for i, c in enumerate(courses):
+            print(fmt.format(i+1, c.abbrev + ("*" if c.auto_abbrev else ""), ellipsize(c.name, 50),
+                    c.type_abbrev + ("*" if c.auto_type_abbrev else ""), ellipsize(c.type, 25),
+                    "yes" if c.sync == SyncMode.Full else "no"))
+
+
+    def edit_courses(self):
+        courses = self.database.list_courses(full=True)
+
+        course_op = self.command_line["course_op"]
+        if course_op == "list":
+            self.show_course_table(courses)
+        else:
+            if len(self.database.list_views(full=False)):
+                print("Error: Please remove all views before editing course metadata.")
+                raise ApplicationExit()
+
+            try:
+                course_range = expand_int_range(self.command_line["course_range"], 1, len(courses))
+            except ValueError:
+                print("Error: Invalid course range.")
+                raise ApplicationExit()
+
+            for num in course_range:
+                course = courses[num-1]
+                if course_op == "sync":
+                    course.sync = SyncMode.Full if self.command_line["course_sync"] \
+                            else SyncMode.NoSync
+                elif course_op == "set-name":
+                    old_auto_abbrev = course.abbrev if course.auto_abbrev else None
+                    course.name = self.command_line["course_new_id"]
+                    if old_auto_abbrev and course.abbrev != old_auto_abbrev:
+                        print("{} {}: Auto-generated name abbreviation changed from \"{}\"to \"{}\"".format(
+                            course.name, course.type, old_auto_abbrev, course.abbrev))
+                elif course_op == "set-type":
+                    old_auto_abbrev = course.type_abbrev if course.auto_type_abbrev else None
+                    course.type = self.command_line["course_new_id"]
+                    if old_auto_type_abbrev and course.type_abbrev != old_auto_type_abbrev:
+                        print("{} {}: Auto-generated type abbreviation changed from \"{}\" to \"{}\"".format(
+                            course.name, course.type, old_auto_type_abbrev, course.type_abbrev))
+                elif course_op == "set-abbrev":
+                    course.abbrev = self.command_line["course_new_id"]
+                elif course_op == "set-tabbrev":
+                    course.type_abbrev = self.command_line["course_new_id"]
+                self.database.update_course(course)
+
+            self.database.commit()
+
+
     def show_usage(self, out):
         out.write(
-            "Usage: {} <operation> <parameters>\n\n"
-            "Synchronization operations:\n"
+            "Usage: {} <operation> <parameters>\n"
+            "\nSynchronization operations:\n"
             "    update        Update course database from Stud.IP\n"
             "    fetch         Download missing files from known database\n"
             "    checkout      Checkout files into views\n"
             "    sync          <update>, then <fetch>, then <checkout>\n"
             "    clear-cache   Clear local course and file database\n"
-            "    view <...>    Show and modify views\n"
-            "    help          Show this synopsis\n\n"
-            "Commands for showing and modifying views:\n"
+            "\nCommands for showing and modifying views:\n"
             "    view show [<name>]\n"
             "    view add <name> [<key> <value>]...\n"
             "    view rm [-f] <name>\n"
-            "    view reset-deleted [<name>]\n\n"
-            "Possible global parameters:\n"
+            "    view reset-deleted [<name>]\n"
+            "\nCommands for showing and changing courses:\n"
+            "    course list\n"
+            "    course sync <range> yes|no\n"
+            "    course set-name <range> <new-name>\n"
+            "    course set-abbrev <range> <new-abbrev>\n"
+            "    course set-type <range> <new-type>\n"
+            "    course set-tabbrev <range> <new-type-abbrev>\n"
+            "    ... where <range> is similar to \"1,3-5,7-9\"\n"
+            "\nGeneral commands:\n"
+            "    help          Show this synopsis\n"
+            "\nPossible global parameters:\n"
             "    -d <dir>      Sync directory, assuming most recent one if not given\n"
             .format(sys.argv[0]))
 
@@ -343,7 +406,7 @@ class Application:
         if op in [ "update", "fetch", "checkout", "sync", "clear-cache" ]:
             if len(plain) > 0:
                 return False
-        elif op in [ "view" ]:
+        elif op == "view":
             if len(plain) < 1:
                 return False
             else:
@@ -362,6 +425,31 @@ class Application:
                             return False
                 else:
                     return False
+        elif op == "course":
+            if len(plain) < 1:
+                return False
+            else:
+                self.command_line["course_op"] = course_op = plain[0]
+                if course_op in [ "list" ]:
+                    if len(plain) != 1:
+                        return False
+                elif course_op in [ "sync", "set-name", "set-abbrev", "set-type",
+                        "set-tabbrev" ]:
+                    if len(plain) != 3:
+                        return False
+                    self.command_line["course_range"] = plain[1]
+                    if course_op == "sync":
+                        value = plain[2].lower()
+                        if value in [ "yes", "true", "on" ]:
+                            self.command_line["course_sync"] = SyncMode.Full
+                        elif value in [ "no", "false", "off" ]:
+                            self.command_line["course_sync"] = SyncMode.NoSync
+                        else:
+                            return False
+                    elif course_op in [ "set-name", "set-abbrev", "set-type", "set-tabbrev" ]:
+                        self.command_line["course_new_id"] = plain[2]
+                else:
+                    return False
         else:
             return False
 
@@ -378,7 +466,7 @@ class Application:
 
         op = self.command_line["operation"]
 
-        if op in [ "update", "fetch", "checkout", "sync", "view" ]:
+        if op in [ "update", "fetch", "checkout", "sync", "view", "course" ]:
             self.configure()
             with self.config:
                 self.open_database()
@@ -402,6 +490,8 @@ class Application:
                     self.checkout()
                 elif op == "view":
                     self.edit_views()
+                elif op == "course":
+                    self.edit_courses()
         elif op == "clear-cache":
             self.clear_cache()
         else: # op == "help"

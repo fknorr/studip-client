@@ -9,7 +9,8 @@ from enum import IntEnum
 
 from .parsers import *
 from .database import SyncMode
-from .util import prompt_choice, ellipsize, escape_file_name
+from .util import prompt_choice, ellipsize, escape_file_name, \
+        abbreviate_course_name, abbreviate_course_type
 from .async import ThreadPool
 
 
@@ -128,10 +129,18 @@ class Session:
                 self.db.delete_course(course)
 
         for course in new_courses:
-            sync = prompt_choice("Synchronize {} {}? ([Y]es, [n]o, [m]etadata only)".format(
-                    course.type, ellipsize(course.name, 40)), "ynm", default="y")
-            course.sync = { "y" : SyncMode.Full, "n" : SyncMode.NoSync, "m" : SyncMode.Metadata }[
-                    sync]
+            sync = prompt_choice("Synchronize {} {}? ([Y]es, [r]ename, [n]o)".format(
+                    course.type, ellipsize(course.name, 40)), "ynr", default="y")
+            if sync == "r":
+                course.name = input("Name [{}]: ".format(course.name)).strip() or course.name
+                course.abbrev = input("Abbreviation [{}]: ".format(
+                    abbreviate_course_name(course.name))).strip() or None
+                course.type = input("Type [{}]: ".format(course.type)).strip() or course.type
+                course.type_abbrev = input("Type abbreviation [{}]: ".format(
+                    abbreviate_course_type(course.type))).strip() or None
+                course.sync = SyncMode.Full
+            else:
+                course.sync = { "y" : SyncMode.Full, "n" : SyncMode.NoSync }[sync]
             self.db.add_course(course)
 
         sync_courses = self.db.list_courses(full=True, select_sync_no=False)

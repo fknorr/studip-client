@@ -1,7 +1,7 @@
-import sqlite3, os, ast, shutil
+import sqlite3, os, ast, shutil, re
 from enum import IntEnum
 
-from .util import EscapeMode, Charset
+from .util import EscapeMode, Charset, abbreviate_course_name, abbreviate_course_type
 
 SyncMode = IntEnum("SyncMode", "NoSync Metadata Full")
 
@@ -17,27 +17,57 @@ class Semester:
 
 
 class Course:
-    def __init__(self, id, semester=None, number=None, name=None, type=None, sync=None):
+    def __init__(self, id, semester=None, number=None, name=None, abbrev=None, type=None,
+            type_abbrev=None, sync=None):
         self.id = id
         self.semester = semester
         self.number = number
         self.name = name
         self.type = type
         self.sync = sync
+        self._abbrev = abbrev
+        self._type_abbrev = type_abbrev
+
+    @property
+    def abbrev(self):
+        return self._abbrev if self._abbrev else abbreviate_course_name(self.name)
+
+    @abbrev.setter
+    def abbrev(self, value):
+        self._abbrev = value
+
+    @property
+    def auto_abbrev(self):
+        return self._abbrev is None
+
+    @property
+    def type_abbrev(self):
+        return self._type_abbrev if self._type_abbrev else abbreviate_course_type(self.type)
+
+    @type_abbrev.setter
+    def type_abbrev(self, value):
+        self._type_abbrev = value
+
+    @property
+    def auto_type_abbrev(self):
+        return self._type_abbrev is None
 
     def complete(self):
         return self.id and self.semester and self.number and self.name and self.type and self.sync
 
 
 class File:
-    def __init__(self, id, course=None, course_semester=None, course_name=None, course_type=None,
-            path=None, name=None, extension=None, author=None, description=None, remote_date=None,
-            copyrighted=False, local_date=None, version=None):
+    def __init__(self, id, course=None, course_semester=None, course_name=None, course_abbrev=None,
+            course_type=None, course_type_abbrev=None, path=None, name=None, extension=None,
+            author=None, description=None, remote_date=None, copyrighted=False, local_date=None,
+            version=None):
         self.id = id
         self.course = course
         self.course_semester = course_semester
         self.course_name = course_name
+        self._course_abbrev = course_abbrev
         self.course_type = course_type
+        self._course_type_abbrev = course_type_abbrev
         self.path = path
         self.name = name
         self.extension = extension
@@ -47,6 +77,15 @@ class File:
         self.copyrighted = copyrighted
         self.local_date = local_date
         self.version = version
+
+    @property
+    def course_abbrev(self):
+        return self._course_abbrev if self._course_abbrev else abbreviate_course_name(self.name)
+
+    @property
+    def course_type_abbrev(self):
+        return self._course_type_abbrev if self._course_type_abbrev \
+                else abbreviate_course_type(self.course_type)
 
     def complete(self):
         return self.id and self.course and self.path and self.name and self.remote_date
@@ -85,7 +124,7 @@ class QueryError(Exception):
 
 
 class Database:
-    schema_version = 11
+    schema_version = 12
 
     def __init__(self, file_name):
         def connect(self):
@@ -96,14 +135,19 @@ class Database:
         connect(self)
         db_version, = self.query("PRAGMA user_version", expected_rows=1)[0]
         if db_version < self.schema_version:
-            if db_version == 9:
+            if db_version in [ 9, 11 ]:
                 # Disconnect and reconnect to create a backup
                 self.conn.close()
                 base_name, ext = os.path.splitext(file_name)
                 backup_file = "{}.backup-schema{}{}".format(base_name, db_version, ext)
                 shutil.copyfile(file_name, backup_file)
                 connect(self)
-                self.query_script_file("migrate-9-11.sql")
+
+                if db_version < 11:
+                    self.query_script_file("migrate-9-11.sql")
+                if db_version < 12:
+                    self.query_script_file("migrate-11-12.sql")
+
                 print("Migrated database from version {} to {}, backup saved to {}".format(
                         db_version, self.schema_version, backup_file))
             elif db_version != 0:
@@ -173,38 +217,54 @@ class Database:
 
         if full:
             rows = self.query("""
-                SELECT c.id, s.name, c.number, c.name, c.type, c.sync FROM courses AS c
+                SELECT c.id, s.name, c.number, c.name, c.abbrev, c.type, c.type_abbrev, c.sync
+                FROM courses AS c
                 INNER JOIN semesters AS s ON s.id = c.semester
-                WHERE c.sync IN ({});
+                WHERE c.sync IN ({})
+                ORDER BY c.name, c.type;
             """.format(", ".join(sync_modes)))
-            return [ Course(i, s, n, a, t, SyncMode(sync)) for i, s, n, a, t, sync in rows ]
+            return [ Course(i, s, n, a, b, t, u, SyncMode(sync))
+                    for i, s, n, a, b, t, u, sync in rows ]
         else:
             rows = self.query("""
                 SELECT id FROM courses
-                WHERE sync IN ({});
+                WHERE sync IN ({})
+                ORDER BY name;
             """.format(", ".join(sync_modes)))
             return [ id for (id,) in rows ]
 
 
     def get_course_details(self, course_id):
         rows = self.query("""
-                SELECT s.name, c.number, c.name, c.sync
+                SELECT s.name, c.number, c.name, c.abbrev, c.type, c.type_abbrev, c.sync
                 FROM courses AS c
                 INNER JOIN semesters AS s ON s.id = c.semester
                 WHERE c.id = :id;
             """, id=course_id, expected_rows=1)
-        semester, number, name, sync = rows[0]
+        semester, number, name, abbrev, type, type_abbrev, sync = rows[0]
         return Course(id=course_id, semester=semester, number=number, name=name,
-                sync=SyncMode(sync))
+                abbrev=abbrev, type=type, type_abbrev=type_abbrev, sync=SyncMode(sync))
 
 
     def add_course(self, course):
         self.query("""
-                INSERT INTO courses (id, semester, number, name, type, sync)
-                VALUES (:id, (SELECT id FROM semesters WHERE name = :sem), :num, :name,
-                    :type, :sync);
+                INSERT INTO courses (id, semester, number, name, abbrev, type, type_abbrev, sync)
+                VALUES (:id, (SELECT id FROM semesters WHERE name = :sem), :num, :name, :abbrev,
+                    :type, :tabbrev, :sync);
             """, id=course.id, sem=course.semester, num=course.number, name=course.name,
-                type=course.type, sync=int(course.sync), expected_rows=0)
+                abbrev=course._abbrev, type=course.type, tabbrev=course._type_abbrev,
+                sync=int(course.sync), expected_rows=0)
+
+
+    def update_course(self, course):
+        self.query("""
+                UPDATE courses
+                SET number=:num, name=:name, abbrev=:abbrev, type=:type, type_abbrev=:type_abbrev,
+                    sync=:sync
+                WHERE id=:id;
+            """, id=course.id, num=course.number, name=course.name, abbrev=course.abbrev,
+                type=course.type, type_abbrev=course.type_abbrev, sync=int(course.sync),
+                expected_rows=0)
 
 
     def delete_course(self, course):
@@ -223,15 +283,15 @@ class Database:
 
         if full:
             rows = self.query("""
-                    SELECT id, course_id, course_semester, course_name, course_type, path, name,
-                        extension, author, description, remote_date, copyrighted, local_date,
-                        version
+                    SELECT id, course_id, course_semester, course_name, course_abbrev, course_type,
+                        course_type_abbrev, path, name, extension, author, description, remote_date,
+                        copyrighted, local_date, version
                     FROM file_details
                     WHERE sync IN ({});
                 """.format(", ".join(sync_modes)))
             # Path is encoded as the string representation of a python list
-            return [ File(i, j, s, c, o, ast.literal_eval(path), n, e, a, d, t, y, l, v)
-                    for i, j, s, c, o, path, n, e, a, d, t, y, l, v in rows ]
+            return [ File(i, j, s, c, b, o, u, ast.literal_eval(path), n, e, a, d, t, y, l, v)
+                    for i, j, s, c, b, o, u, path, n, e, a, d, t, y, l, v in rows ]
 
         else:
             rows = self.query("""
@@ -309,12 +369,14 @@ class Database:
             rows = self.query("""
                     SELECT id, name, format, base, esc_mode, charset
                     FROM views
+                    ORDER BY name;
                 """)
             return [ View(i, n, f, b, EscapeMode(e), Charset(c)) for i, n, f, b, e, c in rows ]
         else:
             rows = self.query("""
                     SELECT id
                     FROM views
+                    ORDER BY name;
                 """)
             return [ id for id, in rows ]
 

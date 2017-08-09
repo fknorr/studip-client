@@ -21,7 +21,9 @@ CREATE TABLE IF NOT EXISTS courses (
     semester CHAR(32) NOT NULL,
     number VARCHAR(8) DEFAULT "",
     name VARCHAR(128) NOT NULL,
+    abbrev VARCHAR(12),
     type VARCHAR(32) NOT NULL,
+    type_abbrev VARCHAR(4),
     sync SMALLINT NOT NULL,
     root INTEGER,
     PRIMARY KEY (id ASC),
@@ -109,7 +111,8 @@ CREATE VIEW IF NOT EXISTS folder_paths AS
 
 CREATE VIEW IF NOT EXISTS file_details AS
     SELECT f.id AS id, c.id AS course_id, s.name AS course_semester, c.name AS course_name,
-            c.type AS course_type, p.path AS path, f.name AS name, f.extension AS extension,
+            c.abbrev AS course_abbrev, c.type AS course_type, c.type_abbrev as course_type_abbrev,
+            p.path AS path, f.name AS name, f.extension AS extension,
             f.author AS author, f.description AS description, f.remote_date AS remote_date,
             f.copyrighted AS copyrighted, f.local_date as local_date, f.version AS version,
             c.sync AS sync
