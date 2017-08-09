@@ -6,7 +6,8 @@ from errno import ENOENT
 
 from .config import Config
 from .database import Database, View, QueryError, SyncMode
-from .util import prompt_choice, encrypt_password, decrypt_password, Charset, EscapeMode, ellipsize
+from .util import prompt_choice, expand_int_range, encrypt_password, decrypt_password, Charset, \
+        EscapeMode, ellipsize
 from .session import Session, SessionError, LoginError
 from .views import ViewSynchronizer
 
@@ -293,11 +294,11 @@ class Application:
 
     def show_course_table(self, courses):
         abbrev_width = max(len("abbrev"), max(len(c.abbrev) for c in courses))
-        fmt = "{:" + str(abbrev_width) + "} | {:50} | {:7} | {:25} | {:4}"
-        print(fmt.format("abbrev", "name", "tabbrev", "type", "sync"))
-        print(fmt.format("", "", "", "", "").replace(" ", "-").replace("|", "+"))
-        for c in courses:
-            print(fmt.format(c.abbrev, ellipsize(c.name, 50), c.type_abbrev,
+        fmt = "{:3} | {:" + str(abbrev_width) + "} | {:50} | {:7} | {:25} | {:4}"
+        print(fmt.format("", "abbrev", "name", "tabbrev", "type", "sync"))
+        print(fmt.format("", "", "", "", "", "").replace(" ", "-").replace("|", "+"))
+        for i, c in enumerate(courses):
+            print(fmt.format(i+1, c.abbrev, ellipsize(c.name, 50), c.type_abbrev,
                     ellipsize(c.type, 25), "yes" if c.sync == SyncMode.Full else "no"))
 
 
@@ -308,31 +309,32 @@ class Application:
         if course_op == "list":
             self.show_course_table(courses)
         else:
-            try:
-                course = next(c for c in courses if c.abbrev == self.command_line["course_abbrev"])
-            except StopIteration:
-                print("Error: No such course.")
-                raise ApplicationExit()
-
             if len(self.database.list_views(full=False)):
                 print("Error: Please remove all views before editing course metadata.")
                 raise ApplicationExit()
 
-            if course_op == "sync":
-                course.sync = SyncMode.Full if self.command_line["course_sync"] == "on" \
-                        else SyncMode.NoSync
-            elif course_op == "set-name":
-                course.name = self.command_line["course_new_id"]
-            elif course_op == "set-type":
-                course.type = self.command_line["course_new_id"]
-            elif course_op == "set-abbrev":
-                course.abbrev = self.command_line["course_new_id"]
-            elif course_op == "set-tabbrev":
-                course.type_abbrev = self.command_line["course_new_id"]
+            try:
+                course_range = expand_int_range(self.command_line["course_range"], 1, len(courses))
+            except ValueError:
+                print("Error: Invalid course range.")
+                raise ApplicationExit()
 
-            self.database.update_course(course)
+            for num in course_range:
+                course = courses[num-1]
+                if course_op == "sync":
+                    course.sync = SyncMode.Full if self.command_line["course_sync"] \
+                            else SyncMode.NoSync
+                elif course_op == "set-name":
+                    course.name = self.command_line["course_new_id"]
+                elif course_op == "set-type":
+                    course.type = self.command_line["course_new_id"]
+                elif course_op == "set-abbrev":
+                    course.abbrev = self.command_line["course_new_id"]
+                elif course_op == "set-tabbrev":
+                    course.type_abbrev = self.command_line["course_new_id"]
+                self.database.update_course(course)
+
             self.database.commit()
-            self.show_course_table([course])
 
 
     def show_usage(self, out):
@@ -351,11 +353,12 @@ class Application:
             "    view reset-deleted [<name>]\n"
             "\nCommands for showing and changing courses:\n"
             "    course list\n"
-            "    course sync <abbrev> on|off\n"
-            "    course set-name <abbrev> <new-name>\n"
-            "    course set-abbrev <abbrev> <new-abbrev>\n"
-            "    course set-type <abbrev> <new-type>\n"
-            "    course set-tabbrev <abbrev> <new-type-abbrev>\n"
+            "    course sync <range> yes|no\n"
+            "    course set-name <range> <new-name>\n"
+            "    course set-abbrev <range> <new-abbrev>\n"
+            "    course set-type <range> <new-type>\n"
+            "    course set-tabbrev <range> <new-type-abbrev>\n"
+            "    ... where <range> is similar to \"1,3-5,7-9\"\n"
             "\nGeneral commands:\n"
             "    help          Show this synopsis\n"
             "\nPossible global parameters:\n"
@@ -425,11 +428,15 @@ class Application:
                         "set-tabbrev" ]:
                     if len(plain) != 3:
                         return False
-                    self.command_line["course_abbrev"] = plain[1]
+                    self.command_line["course_range"] = plain[1]
                     if course_op == "sync":
-                        if plain[2] not in [ "on", "off" ]:
+                        value = plain[2].lower()
+                        if value in [ "yes", "true", "on" ]:
+                            self.command_line["course_sync"] = SyncMode.Full
+                        elif value in [ "no", "false", "off" ]:
+                            self.command_line["course_sync"] = SyncMode.NoSync
+                        else:
                             return False
-                        self.command_line["course_sync"] = plain[2]
                     elif course_op in [ "set-name", "set-abbrev", "set-type", "set-tabbrev" ]:
                         self.command_line["course_new_id"] = plain[2]
                 else:
