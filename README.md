@@ -126,21 +126,23 @@ ASCII. The following attributes are available:
     following placeholders are available:
 
     ```
-    {semester}        Course semester (e.g. "WS 16/17")
-    {course-id}       Course hash-id
-    {course}          Course name
-    {course-abbrev}   Auto-generated course name abbreviation (e.g. "LinAlgI")
-    {type}            Course type (e.g. "Lecture")
-    {type-abbrev}     Abbreviation of the course type (e.g. "L")
-    {path}            Path of the file's containing directory
-    {short-path}      Like {path}, but with "Allgemeiner Dateiordner" removed
-    {id}              File hash-id
-    {name}            Original file name, without extension
-    {ext}             File extension (e.g. "pdf")
-    {description}     Full file description
-    {descr-no-ext}    Like {description}, but with the file extension stripped (if any)
-    {author}          File author's name
-    {time}            Time of creation (e.g. "2017-03-02 13:12")
+    {semester}                  Course semester (e.g. "WS 16/17")
+    {semester-lexical}          Course semester in lexically sortable format (e.g. "2016WS17")
+    {semester-lexical-short}    Course semester in lexically sortable format (e.g. "2016WS")
+    {course-id}                 Course hash-id
+    {course}                    Course name
+    {course-abbrev}             Auto-generated course name abbreviation (e.g. "LinAlgI")
+    {type}                      Course type (e.g. "Lecture")
+    {type-abbrev}               Abbreviation of the course type (e.g. "L")
+    {path}                      Path of the file's containing directory
+    {short-path}                Like {path}, but with "Allgemeiner Dateiordner" removed
+    {id}                        File hash-id
+    {name}                      Original file name, without extension
+    {ext}                       File extension (e.g. "pdf")
+    {description}               Full file description
+    {descr-no-ext}              Like {description}, but with the file extension stripped (if any)
+    {author}                    File author's name
+    {time}                      Time of creation (e.g. "2017-03-02 13:12")
     ```
 
 - `base`: The base directory containing the view's directory tree. If there is only one view,
