@@ -6,6 +6,7 @@ from .util import ellipsize, escape_file_name
 
 WORD_SEPARATOR_RE = re.compile(r'[-. _/()]+')
 NUMBER_RE = re.compile(r'^([0-9]+)|([IVXLCDM]+)$')
+SEMESTER_RE = re.compile(r'^(SS|WS) (\d{2})(.(\d{2}))?')
 
 
 def abbreviate_course(name):
@@ -24,9 +25,9 @@ def abbreviate_course(name):
 def lexicalise_semester(semester, short=False):
     """Takes input of the form "SS 16" or "WS 16/17" and converts it to "2016SS" or "2016WS17"."""
     if short:
-        return re.sub(r'^(SS|WS) (\d{2})(.(\d{2}))?', r'20\2\1', semester)
+        return SEMESTER_RE.sub(r'20\2\1', semester)
     else:
-        return re.sub(r'^(SS|WS) (\d{2})(.(\d{2}))?', r'20\2\1\4', semester)
+        return SEMESTER_RE.sub(r'20\2\1\4', semester)
 
 def abbreviate_type(type):
     special_abbrevs = {
