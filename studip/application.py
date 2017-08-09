@@ -293,13 +293,14 @@ class Application:
 
 
     def show_course_table(self, courses):
-        abbrev_width = max(len("abbrev"), max(len(c.abbrev) for c in courses))
+        abbrev_width = max(len("abbrev"), max(len(c.abbrev) for c in courses)+1)
         fmt = "{:3} | {:" + str(abbrev_width) + "} | {:50} | {:7} | {:25} | {:4}"
         print(fmt.format("", "abbrev", "name", "tabbrev", "type", "sync"))
         print(fmt.format("", "", "", "", "", "").replace(" ", "-").replace("|", "+"))
         for i, c in enumerate(courses):
-            print(fmt.format(i+1, c.abbrev, ellipsize(c.name, 50), c.type_abbrev,
-                    ellipsize(c.type, 25), "yes" if c.sync == SyncMode.Full else "no"))
+            print(fmt.format(i+1, c.abbrev + ("*" if c.auto_abbrev else ""), ellipsize(c.name, 50),
+                    c.type_abbrev + ("*" if c.auto_type_abbrev else ""), ellipsize(c.type, 25),
+                    "yes" if c.sync == SyncMode.Full else "no"))
 
 
     def edit_courses(self):
@@ -325,9 +326,17 @@ class Application:
                     course.sync = SyncMode.Full if self.command_line["course_sync"] \
                             else SyncMode.NoSync
                 elif course_op == "set-name":
+                    old_auto_abbrev = course.abbrev if course.auto_abbrev else None
                     course.name = self.command_line["course_new_id"]
+                    if old_auto_abbrev and course.abbrev != old_auto_abbrev:
+                        print("{} {}: Auto-generated name abbreviation changed from \"{}\"to \"{}\"".format(
+                            course.name, course.type, old_auto_abbrev, course.abbrev))
                 elif course_op == "set-type":
+                    old_auto_abbrev = course.type_abbrev if course.auto_type_abbrev else None
                     course.type = self.command_line["course_new_id"]
+                    if old_auto_type_abbrev and course.type_abbrev != old_auto_type_abbrev:
+                        print("{} {}: Auto-generated type abbreviation changed from \"{}\" to \"{}\"".format(
+                            course.name, course.type, old_auto_type_abbrev, course.type_abbrev))
                 elif course_op == "set-abbrev":
                     course.abbrev = self.command_line["course_new_id"]
                 elif course_op == "set-tabbrev":

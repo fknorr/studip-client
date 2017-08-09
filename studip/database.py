@@ -37,12 +37,20 @@ class Course:
         self._abbrev = value
 
     @property
+    def auto_abbrev(self):
+        return self._abbrev is None
+
+    @property
     def type_abbrev(self):
         return self._type_abbrev if self._type_abbrev else abbreviate_course_type(self.type)
 
     @type_abbrev.setter
     def type_abbrev(self, value):
         self._type_abbrev = value
+
+    @property
+    def auto_type_abbrev(self):
+        return self._type_abbrev is None
 
     def complete(self):
         return self.id and self.semester and self.number and self.name and self.type and self.sync
