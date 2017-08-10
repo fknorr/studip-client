@@ -215,13 +215,34 @@ class Application:
         views = self.database.list_views(full=True)
 
         view_op = self.command_line["view_op"]
-        if "view_name" not in self.command_line:
-            if view_op == "show":
-                print("\n".join(v.name for v in views))
-            else: # view_op == "reset-deleted"
-                for v in views:
-                    sync = ViewSynchronizer(self.sync_dir, self.config, self.database, v)
-                    sync.reset_deleted()
+
+        if view_op == "list":
+            name_width = max(len("name"), max(len(v.name) for v in views))
+            base_width = max(len("base"), max(len(v.base) if v.base else 0 for v in views))
+            format_width = max(len("format"), max(len(v.format) for v in views))
+            fmt = "{{:{}}} | {{:{}}} | {{:{}}} | {{:8}} | {{:9}}".format(name_width, base_width,
+                    format_width, )
+            print(fmt.format("name", "base", "format", "escape", "charset"))
+            print(fmt.format("", "", "", "", "").replace(" ", "-").replace("|", "+"))
+            for v in views:
+                print(fmt.format(v.name, v.base if v.base else "/", v.format,
+                    {
+                        EscapeMode.Similar: "similar",
+                        EscapeMode.Typeable: "typeable",
+                        EscapeMode.CamelCase: "camel",
+                        EscapeMode.SnakeCase: "snake"
+                    }[v.escape],
+                    {
+                        Charset.Unicode: "unicode",
+                        Charset.Ascii: "ascii",
+                        Charset.Identifier: "identifier"
+                    }[v.charset]))
+            return
+
+        if view_op == "reset-deleted" and "view_name" not in self.command_line:
+            for v in views:
+                sync = ViewSynchronizer(self.sync_dir, self.config, self.database, v)
+                sync.reset_deleted()
             return
 
         matching_views = [v for v in views if v.name == self.command_line["view_name"]]
@@ -231,7 +252,7 @@ class Application:
             sys.stderr.write(fmt.format(self.command_line["view_name"]))
             raise ApplicationExit()
 
-        if view_op == "add":
+        elif view_op == "add":
             id = max(v.id for v in views) + 1 if views else 0
             view = View(id, self.command_line["view_name"])
             for key, value in self.command_line["view_sets"]:
@@ -276,27 +297,7 @@ class Application:
             self.database.add_view(view)
         else:
             view = matching_views[0]
-            if view_op == "show":
-                print(
-                    "format: \"{}\"\n"
-                    "base: \"{}\"\n"
-                    "escape: {}\n"
-                    "charset: {}".format(
-                        view.format,
-                        view.base if view.base else "",
-                        {
-                            EscapeMode.Similar: "similar",
-                            EscapeMode.Typeable: "typeable",
-                            EscapeMode.CamelCase: "camel",
-                            EscapeMode.SnakeCase: "snake"
-                        }[view.escape],
-                        {
-                            Charset.Unicode: "unicode",
-                            Charset.Ascii: "ascii",
-                            Charset.Identifier: "identifier"
-                        }[view.charset]
-                    ))
-            elif view_op == "rm":
+            if view_op == "rm":
                 view_sync = ViewSynchronizer(self.sync_dir, self.config, self.database, view)
                 view_sync.remove()
                 self.database.remove_view(view.id)
@@ -372,7 +373,7 @@ class Application:
             "    gc            Delete fetched files that are not checked out\n"
             "    clear-cache   Clear local course and file database\n"
             "\nCommands for showing and modifying views:\n"
-            "    view show [<name>]\n"
+            "    view list\n"
             "    view add <name> [<key> <value>]...\n"
             "    view rm [-f] <name>\n"
             "    view reset-deleted [<name>]\n"
@@ -427,10 +428,13 @@ class Application:
                 return False
             else:
                 self.command_line["view_op"] = view_op = plain[0]
-                if view_op in [ "show", "add", "rm", "reset-deleted" ]:
+                if view_op == "list":
+                    if len(plain) != 1:
+                        return False
+                elif view_op in [ "add", "rm", "reset-deleted" ]:
                     if len(plain) > 1:
                         self.command_line["view_name"] = plain[1]
-                    elif view_op not in [ "show", "reset-deleted" ]:
+                    elif view_op not in [ "reset-deleted" ]:
                         return False
                     self.command_line["view_sets"] = []
                     if len(plain) > 2:
