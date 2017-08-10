@@ -1,4 +1,4 @@
-import os, sys, appdirs
+import os, sys, appdirs, stat
 
 from getpass import getpass
 from base64 import b64encode, b64decode
@@ -78,11 +78,11 @@ class Application:
             self.print_io_error("Unable to write to", history_file_name, e)
             raise ApplicationExit()
 
-        dot_dir = os.path.join(self.sync_dir, ".studip")
-        self.create_path(dot_dir)
+        self.dot_dir = os.path.join(self.sync_dir, ".studip")
+        self.create_path(self.dot_dir)
 
-        self.config_file_name = os.path.join(dot_dir, "studip.conf")
-        self.db_file_name = os.path.join(dot_dir, "cache.sqlite")
+        self.config_file_name = os.path.join(self.dot_dir, "studip.conf")
+        self.db_file_name = os.path.join(self.dot_dir, "cache.sqlite")
 
 
     def configure(self):
@@ -194,6 +194,21 @@ class Application:
                 raise ApplicationExit()
 
         print("Cache cleared.")
+
+
+    def gc(self):
+        files_dir = os.path.join(self.dot_dir, "files")
+        removed_files = 0
+        for f in os.listdir(files_dir):
+            path = os.path.join(files_dir, f)
+            st = os.lstat(path)
+            if stat.S_ISREG(st.st_mode) and st.st_nlink < 2:
+                try:
+                    os.unlink(path)
+                    removed_files += 1
+                except IOError as e:
+                    self.print_io_error("Unable to remove cached file", path, e)
+        print("Removed {} stale file(s)".format(removed_files))
 
 
     def edit_views(self):
@@ -354,6 +369,7 @@ class Application:
             "    fetch         Download missing files from known database\n"
             "    checkout      Checkout files into views\n"
             "    sync          <update>, then <fetch>, then <checkout>\n"
+            "    gc            Delete fetched files that are not checked out\n"
             "    clear-cache   Clear local course and file database\n"
             "\nCommands for showing and modifying views:\n"
             "    view show [<name>]\n"
@@ -403,7 +419,7 @@ class Application:
         op = plain[0]
         plain = plain[1:]
 
-        if op in [ "update", "fetch", "checkout", "sync", "clear-cache" ]:
+        if op in [ "update", "fetch", "checkout", "sync", "clear-cache", "gc" ]:
             if len(plain) > 0:
                 return False
         elif op == "view":
@@ -494,6 +510,8 @@ class Application:
                     self.edit_courses()
         elif op == "clear-cache":
             self.clear_cache()
+        elif op == "gc":
+            self.gc()
         else: # op == "help"
             self.show_usage(sys.stdout)
 

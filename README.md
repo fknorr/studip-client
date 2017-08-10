@@ -185,6 +185,16 @@ ASCII. The following attributes are available:
     snake             special_chars/are_replaced_by_underscores/characters_are.lowercase
     ```
 
+Management
+----------
+
+There are additional commands for repository management:
+
+- `gc`: Delete any fetched file that is not currently checked out in any view. This allows
+reclaiming disk space after deleting checked-out files.
+- `clear-cache`: Clear the entire database. This is never required in normal operation and should
+only be used if the database is damaged due to a failed update.
+
 Security
 --------
 
