@@ -1,3 +1,5 @@
+**This tool is broken by the recent Stud.IP web interface update and will *not* be fixed. Please move on to [studip-fuse](https://github.com/N-Coder/studip-fuse).**
+
 Stud.IP Client
 ==============
 
